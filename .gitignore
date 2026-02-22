@@ -1,0 +1,67 @@
+# Unity
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+Assets/AssetStoreTools/
+*.csproj
+*.unityproj
+*.sln
+*.user
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+*.pidb.meta
+*.pdb.meta
+*.mdb.meta
+*.opendb.meta
+*.VC.db.meta
+
+# Visual Studio Code
+.vscode/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Crash Reports
+*.crash
+
+# Other
+*.swp
+*.bak
+*.tmp
+*.old
+
+# Ignore build output
+Build/
+Builds/
+
+# Ignore Unity generated files
+*.unity
+*.meta
+
+# Ignore Python virtual environments
+venv/
+__pycache__/
+
+# Ignore node_modules
+node_modules/
+
+# Ignore environment files
+.env
+
+# Ignore package lock files
+package-lock.json
+yarn.lock
+
+# Ignore test output
+TestResults/

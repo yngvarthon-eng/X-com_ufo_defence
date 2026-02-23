@@ -328,7 +328,7 @@ namespace XCon.UI.Boxes
         }
     }
 
-    internal sealed class BoxAutoDismissCurrentMessage : MonoBehaviour
+    public sealed class BoxAutoDismissCurrentMessage : MonoBehaviour
     {
         private BoxMessageQueue queue;
         private string triggerKey;

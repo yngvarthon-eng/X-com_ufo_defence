@@ -315,15 +315,6 @@ namespace XCon.UI.Boxes
             }
 #endif
 
-            // Also include legacy Input (works when Active Input Handling = Both).
-            pressed |= key switch
-            {
-                DebugKey.Info => Input.GetKeyDown(KeyCode.F1) || Input.GetKeyDown(KeyCode.Alpha1),
-                DebugKey.Thinking => Input.GetKeyDown(KeyCode.F2) || Input.GetKeyDown(KeyCode.Alpha2),
-                DebugKey.Critical => Input.GetKeyDown(KeyCode.F3) || Input.GetKeyDown(KeyCode.Alpha3),
-                _ => Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.BackQuote),
-            };
-
             return pressed;
         }
     }

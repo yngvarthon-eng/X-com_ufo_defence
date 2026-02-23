@@ -9,6 +9,31 @@ public class GameManager : MonoBehaviour
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
     private static void EnsureExists()
     {
+#if UNITY_EDITOR
+        // In the Editor we ensure existence AfterSceneLoad so the object ends up
+        // in the active scene Hierarchy (and isn't lost during the first load).
+        return;
+#else
+        if (Instance != null)
+        {
+            return;
+        }
+
+        var existing = Object.FindAnyObjectByType<GameManager>();
+        if (existing != null)
+        {
+            Instance = existing;
+            return;
+        }
+
+        var go = new GameObject(RootName);
+        go.AddComponent<GameManager>();
+#endif
+    }
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+    private static void EnsureExistsAfterSceneLoad()
+    {
         if (Instance != null)
         {
             return;

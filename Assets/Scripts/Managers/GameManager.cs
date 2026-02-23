@@ -4,12 +4,38 @@ public class GameManager : MonoBehaviour
 {
     public static GameManager Instance { get; private set; }
 
+    private const string RootName = "GameManager";
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+    private static void EnsureExists()
+    {
+        if (Instance != null)
+        {
+            return;
+        }
+
+        var existing = Object.FindAnyObjectByType<GameManager>();
+        if (existing != null)
+        {
+            Instance = existing;
+            return;
+        }
+
+        var go = new GameObject(RootName);
+        go.AddComponent<GameManager>();
+    }
+
     void Awake()
     {
         if (Instance == null)
         {
             Instance = this;
+
+            // Keep it visible in the active scene while running in the Editor.
+            // In builds, persist across scene loads.
+#if !UNITY_EDITOR
             DontDestroyOnLoad(gameObject);
+#endif
         }
         else
         {

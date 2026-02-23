@@ -177,6 +177,12 @@ The Thinking-Box is a temporary, in-game UI element presented as the **Commander
 - **Voice & tone (v1):**
 	- Short, tactical, slightly tense. The Commander is competent and focused.
 	- Avoid comedy; avoid long exposition.
+	- **POV rules:**
+		- **First-person** ("I"/"we") for responsibility, reflection, and strategy framing.
+			- Example: “We’re stretched thin. I need coverage before we commit.”
+		- **Second-person** ("you") for immediate, actionable directives during play.
+			- Example: “You’re overextended. Pull back and regroup.”
+		- Keep both voices consistent: empathetic, brief, and never accusatory.
 	- Examples:
 		- “We don’t have enough coverage. A radar dish buys us time.”
 		- “If this is a decoy, they want us to chase it. We need proof.”

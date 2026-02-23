@@ -5,6 +5,7 @@ namespace XCon.Systems.Input
 {
     [DisallowMultipleComponent]
     [RequireComponent(typeof(PlayerInput))]
+    [AddComponentMenu("XCon/Input/Player Input Map Initializer")]
     public sealed class PlayerInputMapInitializer : MonoBehaviour
     {
         [Header("Recommended Defaults")]

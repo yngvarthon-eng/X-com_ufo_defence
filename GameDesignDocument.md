@@ -244,6 +244,13 @@ The Thinking-Box is a temporary, in-game UI element presented as the **Commander
 	- **Context aware:** don’t interrupt high-intensity moments (combat spike, rapid inputs) unless critical.
 	- **Tone constraints:** empathetic, brief, never accusatory; avoid “you failed” framing.
 
+- **Shared queue + priority (v1):**
+	- Both boxes publish messages into a single shared queue (one message visible at a time).
+	- Each message has `Channel` (Info / Thinking) and `Severity` (Info / Warn / Critical).
+	- Priority order: Info-Critical > Info-Warn > Thinking > Info-Info.
+	- Higher priority may preempt the current message; preempted messages return to the queue.
+	- Coalesce repeated triggers: keep the latest per trigger key and merge rapid updates.
+
 - **Design rules (to avoid annoyance):**
 	- It should be **short**, skippable, and not block input.
 	- Prefer a **queue** (one item at a time) over spamming multiple popups.

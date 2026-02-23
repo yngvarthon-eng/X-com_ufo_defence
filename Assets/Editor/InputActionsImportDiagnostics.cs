@@ -11,9 +11,30 @@ internal static class InputActionsImportDiagnostics
 {
     private const string InputActionsPath = "Assets/InputSystem_Actions.inputactions";
 
+    private static bool s_HasRun;
+
     static InputActionsImportDiagnostics()
     {
-        EditorApplication.delayCall += RunOnce;
+        // Try to run as early as possible (often before scene load), but only
+        // once the editor is in a stable state.
+        EditorApplication.update += Update;
+    }
+
+    private static void Update()
+    {
+        if (s_HasRun)
+        {
+            EditorApplication.update -= Update;
+            return;
+        }
+
+        // Avoid running while Unity is still compiling/importing/updating.
+        if (EditorApplication.isCompiling || EditorApplication.isUpdating)
+            return;
+
+        s_HasRun = true;
+        EditorApplication.update -= Update;
+        RunOnce();
     }
 
     private static void RunOnce()

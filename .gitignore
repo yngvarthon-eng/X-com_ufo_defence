@@ -4,6 +4,8 @@
 [Oo]bj/
 [Bb]uild/
 [Bb]uilds/
+Logs/
+UserSettings/
 Assets/AssetStoreTools/
 *.csproj
 *.unityproj
@@ -40,14 +42,6 @@ Thumbs.db
 *.bak
 *.tmp
 *.old
-
-# Ignore build output
-Build/
-Builds/
-
-# Ignore Unity generated files
-*.unity
-*.meta
 
 # Ignore Python virtual environments
 venv/

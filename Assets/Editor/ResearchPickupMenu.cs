@@ -33,12 +33,24 @@ namespace XCon.EditorTools
             pickup.transform.position = pos;
             pickup.transform.localScale = Vector3.one * 0.5f;
 
-            // Collider setup.
+            // Collider + Rigidbody setup.
+            // Triggers require at least one Rigidbody in the interaction.
             var collider = pickup.GetComponent<Collider>();
-            if (collider != null)
+            if (collider == null)
             {
-                collider.isTrigger = true;
+                collider = pickup.AddComponent<BoxCollider>();
             }
+
+            collider.isTrigger = true;
+
+            var rb = pickup.GetComponent<Rigidbody>();
+            if (rb == null)
+            {
+                rb = pickup.AddComponent<Rigidbody>();
+            }
+
+            rb.useGravity = false;
+            rb.isKinematic = true;
 
             // Make it visually distinct.
             var renderer = pickup.GetComponent<Renderer>();

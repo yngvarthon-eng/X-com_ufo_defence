@@ -77,5 +77,11 @@ public class GameManager : MonoBehaviour
         {
             gameObject.AddComponent<ResearchManager>();
         }
+
+        // Ensure UFO manager exists so UFO events can publish box messages.
+        if (GetComponent<UFOManager>() == null)
+        {
+            gameObject.AddComponent<UFOManager>();
+        }
     }
 }

@@ -50,7 +50,8 @@ namespace XCon.EditorTools
             }
 
             rb.useGravity = false;
-            rb.isKinematic = true;
+            rb.isKinematic = false;
+            rb.constraints = RigidbodyConstraints.FreezeAll;
 
             // Make it visually distinct.
             var renderer = pickup.GetComponent<Renderer>();

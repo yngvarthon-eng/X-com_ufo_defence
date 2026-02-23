@@ -1,4 +1,5 @@
 using UnityEngine;
+using XCon.UI.Boxes;
 
 public class Collectible : MonoBehaviour
 {
@@ -43,6 +44,16 @@ public class Collectible : MonoBehaviour
 
     private void HandlePickup(GameObject player)
     {
+        // Visible confirmation for debugging.
+        var queue = BoxMessageQueue.Instance != null ? BoxMessageQueue.Instance : Object.FindAnyObjectByType<BoxMessageQueue>();
+        queue?.Publish(new BoxMessage(
+            triggerKey: $"debug/pickup/{gameObject.name}",
+            channel: BoxChannel.Info,
+            severity: BoxSeverity.Info,
+            sourceTag: "Pickup",
+            title: "Pickup Triggered",
+            body: $"Picked up: {gameObject.name}"));
+
         if (triggersResearchComplete)
         {
             var research = Object.FindAnyObjectByType<ResearchManager>();

@@ -12,16 +12,21 @@ namespace XCon.UI.Boxes
     {
         private const string RootName = "BoxSystem (Runtime)";
 
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+        private static void CreateOnceBeforeSceneLoad()
+        {
+            EnsureCreated("BeforeSceneLoad");
+        }
+
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void CreateOnceAfterSceneLoad()
         {
-            var activeScene = SceneManager.GetActiveScene();
+            EnsureCreated("AfterSceneLoad");
+        }
 
-            // Keep this out of menu-only scenes.
-            if (activeScene.name == "MainMenu")
-            {
-                return;
-            }
+        private static void EnsureCreated(string phase)
+        {
+            var activeScene = SceneManager.GetActiveScene();
 
             if (GameObject.Find(RootName) != null)
             {
@@ -29,10 +34,16 @@ namespace XCon.UI.Boxes
             }
 
             var root = new GameObject(RootName);
+
+            // In the Editor, keep it in the active scene so it is visible in the Hierarchy.
+            // In builds, persist across scene loads.
+#if !UNITY_EDITOR
             DontDestroyOnLoad(root);
+#endif
 
 #if UNITY_EDITOR
-            Debug.Log($"[BoxSystem] Bootstrapping in scene '{activeScene.name}'.");
+            var sceneName = activeScene.IsValid() ? activeScene.name : "<invalid>";
+            Debug.Log($"[BoxSystem] Bootstrapping ({phase}) in scene '{sceneName}'.");
 #endif
 
             root.AddComponent<BoxMessageQueue>();
@@ -41,6 +52,27 @@ namespace XCon.UI.Boxes
             view.BuildUI();
 
             root.AddComponent<BoxDebugHotkeys>();
+
+#if UNITY_EDITOR
+            // Make it obvious (even if Console is filtered) that the system is alive.
+            var queue = root.GetComponent<BoxMessageQueue>();
+            if (queue != null)
+            {
+                const string readyKey = "debug/boxsystem/ready";
+
+                queue.Publish(new BoxMessage(
+                    triggerKey: "debug/boxsystem/ready",
+                    channel: BoxChannel.Info,
+                    severity: BoxSeverity.Info,
+                    sourceTag: "System",
+                    title: "BoxSystem Ready",
+                    body: "Press 1/2/3 (or F1/F2/F3). Esc to dismiss."));
+
+                // Don't let the Ready message block subsequent hotkey messages.
+                var autoDismiss = root.AddComponent<BoxAutoDismissCurrentMessage>();
+                autoDismiss.Configure(queue, readyKey, delaySeconds: 2.0f);
+            }
+#endif
         }
     }
 
@@ -174,7 +206,15 @@ namespace XCon.UI.Boxes
             go.transform.SetParent(parent, false);
 
             var text = go.GetComponent<Text>();
-            text.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+            // Unity 6 no longer ships Arial.ttf as a built-in resource.
+            // LegacyRuntime.ttf is the supported built-in fallback.
+            var font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            if (font == null)
+            {
+                font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+            }
+
+            text.font = font;
             text.fontSize = fontSize;
             text.fontStyle = fontStyle;
             text.color = Color.white;
@@ -198,9 +238,14 @@ namespace XCon.UI.Boxes
 
         private void Update()
         {
-            if (BoxMessageQueue.Instance == null)
+            var queue = BoxMessageQueue.Instance;
+            if (queue == null)
             {
-                return;
+                queue = Object.FindAnyObjectByType<BoxMessageQueue>();
+                if (queue == null)
+                {
+                    return;
+                }
             }
 
 #if UNITY_EDITOR
@@ -213,7 +258,7 @@ namespace XCon.UI.Boxes
 
             if (WasPressed(DebugKey.Info))
             {
-                BoxMessageQueue.Instance.Publish(new BoxMessage(
+                queue.Publish(new BoxMessage(
                     triggerKey: "debug/info/contact_detected",
                     channel: BoxChannel.Info,
                     severity: BoxSeverity.Info,
@@ -224,7 +269,7 @@ namespace XCon.UI.Boxes
 
             if (WasPressed(DebugKey.Thinking))
             {
-                BoxMessageQueue.Instance.Publish(new BoxMessage(
+                queue.Publish(new BoxMessage(
                     triggerKey: "debug/thinking/stall",
                     channel: BoxChannel.Thinking,
                     severity: BoxSeverity.Info,
@@ -235,7 +280,7 @@ namespace XCon.UI.Boxes
 
             if (WasPressed(DebugKey.Critical))
             {
-                BoxMessageQueue.Instance.Publish(new BoxMessage(
+                queue.Publish(new BoxMessage(
                     triggerKey: "debug/info/intercept_window",
                     channel: BoxChannel.Info,
                     severity: BoxSeverity.Critical,
@@ -246,7 +291,7 @@ namespace XCon.UI.Boxes
 
             if (WasPressed(DebugKey.Dismiss))
             {
-                BoxMessageQueue.Instance.DismissCurrent();
+                queue.DismissCurrent();
             }
         }
 
@@ -280,6 +325,51 @@ namespace XCon.UI.Boxes
             };
 
             return pressed;
+        }
+    }
+
+    internal sealed class BoxAutoDismissCurrentMessage : MonoBehaviour
+    {
+        private BoxMessageQueue queue;
+        private string triggerKey;
+        private float delaySeconds;
+        private bool configured;
+
+        public void Configure(BoxMessageQueue queue, string triggerKey, float delaySeconds)
+        {
+            this.queue = queue;
+            this.triggerKey = triggerKey;
+            this.delaySeconds = delaySeconds;
+            configured = true;
+        }
+
+        private void Start()
+        {
+            if (!configured || queue == null || string.IsNullOrWhiteSpace(triggerKey))
+            {
+                Destroy(this);
+                return;
+            }
+
+            StartCoroutine(DismissAfterDelay());
+        }
+
+        private System.Collections.IEnumerator DismissAfterDelay()
+        {
+            yield return new WaitForSecondsRealtime(delaySeconds);
+
+            if (queue == null)
+            {
+                yield break;
+            }
+
+            var current = queue.Current;
+            if (current.HasValue && current.Value.TriggerKey == triggerKey)
+            {
+                queue.DismissCurrent();
+            }
+
+            Destroy(this);
         }
     }
 }

@@ -7,6 +7,10 @@ namespace XCon.Systems.Input
     [RequireComponent(typeof(PlayerInput))]
     public sealed class PlayerInputMapInitializer : MonoBehaviour
     {
+        [Header("Recommended Defaults")]
+        [SerializeField] private bool cloneActionsPerPlayer = true;
+        [SerializeField] private bool enforceSingleActionMapEnabled = true;
+
         [SerializeField] private string overrideDefaultActionMap;
 
         private void Awake()
@@ -19,6 +23,22 @@ namespace XCon.Systems.Input
 
             var actions = playerInput.actions;
             if (actions == null)
+            {
+                return;
+            }
+
+            if (cloneActionsPerPlayer)
+            {
+                // Project-wide action assets are shared singletons.
+                // Cloning avoids cross-talk when maps are enabled/disabled and matches PlayerInput guidance.
+                var cloned = Instantiate(actions);
+                cloned.name = $"{actions.name} (Runtime)";
+                cloned.hideFlags = HideFlags.DontSave;
+                playerInput.actions = cloned;
+                actions = cloned;
+            }
+
+            if (!enforceSingleActionMapEnabled)
             {
                 return;
             }

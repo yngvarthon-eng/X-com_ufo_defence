@@ -20,5 +20,11 @@ public class GameManager : MonoBehaviour
     void Start()
     {
         Debug.Log("GameManager started. Welcome, General Yngvar Thon!");
+
+        // Ensure the research system exists so other systems can call it.
+        if (GetComponent<ResearchManager>() == null)
+        {
+            gameObject.AddComponent<ResearchManager>();
+        }
     }
 }

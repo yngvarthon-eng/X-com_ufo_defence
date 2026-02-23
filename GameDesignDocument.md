@@ -192,6 +192,13 @@ The Info-Box is a temporary, in-game UI element focused on **factual information
 | Base/system threshold | “Power critical: backup generators engaged.” | Use thresholds (OK → Warn → Critical), not continuous values |
 | Time-critical alert | “Intercept window: 02:15 remaining.” | Timers allowed when they reduce confusion |
 
+- **Rules (v1):**
+	- **Factual only:** describe what happened / current state; no recommendations or “do X now”.
+	- **Numbers allowed (sparingly):** timers, counts, and simple percentages when they reduce confusion.
+	- **Severity tiers:** label internally as Info/Warn/Critical so the UI can prioritize.
+	- **Rate-limit + dedupe:** suppress repeats within a short window; merge updates (“coverage reduced again”).
+	- **Non-blocking + log:** never block input; latest messages remain accessible in a lightweight log.
+
 ### 2.X “Thinking-Box” (Gameplay Guidance / Commander Inner Monologue)
 The Thinking-Box is a temporary, in-game UI element presented as the **Commander’s inner monologue**. It surfaces the player’s current *intent* and gently pushes the game forward.
 
@@ -229,6 +236,13 @@ The Thinking-Box is a temporary, in-game UI element presented as the **Commander
 | New option unlocked | “We can build a radar dish now. Coverage buys us time.” | “What/why” is OK; avoid deep numbers here |
 | Post-event reflection | “That blackout wasn’t random. Something wanted us blind.” | Bridges into a next step without hard-mandating it |
 | Pre-mission reminder | “You’re overextended. Split the team or pull back.” | Contextual, actionable, brief |
+
+- **Rules (v1):**
+	- **Guidance, not telemetry:** don’t dump raw numbers; if needed, reference that the Info-Box has details.
+	- **No spoilers:** never reveal hidden information the player hasn’t earned.
+	- **Anti-nag:** cooldown per category and per repeated message; avoid repeating the same advice.
+	- **Context aware:** don’t interrupt high-intensity moments (combat spike, rapid inputs) unless critical.
+	- **Tone constraints:** empathetic, brief, never accusatory; avoid “you failed” framing.
 
 - **Design rules (to avoid annoyance):**
 	- It should be **short**, skippable, and not block input.

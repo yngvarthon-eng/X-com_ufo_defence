@@ -160,8 +160,8 @@ Alternate outcomes: Political collapse, criminal dominance, or unexpected allian
 - **Multiplayer assumption:** In co-op, each player can control a subset of units (e.g., 1–3 each) and squads scale naturally with more players.
 - **Balance principle:** The UI/controls should support variable squads without rewriting mission rules (avoid hard-coding “exactly 4”).
 
-### 2.X “Thinking-Box” (Temporary Player Thought UI)
-The Thinking-Box is a temporary, in-game UI element presented as the **Commander’s inner monologue**. It surfaces the player’s current *intent* and gently pushes the game forward.
+### 2.X “Info-Box” (Temporary Player Thought UI)
+The Info-Box is a temporary, in-game UI element presented as the **Commander’s inner monologue**. It surfaces the player’s current *intent* and gently pushes the game forward.
 
 - **Purpose:**
 	- Turn complex systems into clear next steps (tutorialization without stopping the action).

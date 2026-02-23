@@ -2,11 +2,14 @@
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using XCon.UI.Boxes;
 
 namespace XCon.EditorTools
 {
     public static class ResearchPickupMenu
     {
+        private const string BoxRootName = "BoxSystem (Runtime)";
+
         [MenuItem("Tools/XCon/Spawn Research Pickup", priority = 20)]
         private static void SpawnResearchPickup()
         {
@@ -16,6 +19,8 @@ namespace XCon.EditorTools
                 EditorUtility.DisplayDialog("Spawn Research Pickup", "No valid active scene.", "OK");
                 return;
             }
+
+            EnsureBoxSystemExists(activeScene);
 
             var pickup = GameObject.CreatePrimitive(PrimitiveType.Cube);
             pickup.name = "ResearchPickup (Debug)";
@@ -71,6 +76,33 @@ namespace XCon.EditorTools
             EditorGUIUtility.PingObject(pickup);
 
             Debug.Log("[Tools/XCon] Spawned ResearchPickup (Debug). Ensure Player has tag 'Player' and a Rigidbody for triggers to fire.");
+        }
+
+        private static void EnsureBoxSystemExists(Scene activeScene)
+        {
+            if (GameObject.Find(BoxRootName) != null)
+            {
+                return;
+            }
+
+            var root = new GameObject(BoxRootName);
+            SceneManager.MoveGameObjectToScene(root, activeScene);
+
+            root.AddComponent<BoxMessageQueue>();
+
+            var view = root.AddComponent<BoxSystemView>();
+            view.BuildUI();
+
+            root.AddComponent<BoxDebugHotkeys>();
+
+            var queue = root.GetComponent<BoxMessageQueue>();
+            queue?.Publish(new BoxMessage(
+                triggerKey: "debug/boxsystem/ready",
+                channel: BoxChannel.Info,
+                severity: BoxSeverity.Info,
+                sourceTag: "System",
+                title: "BoxSystem Ready",
+                body: "Spawned automatically for pickup debug."));
         }
 
         [MenuItem("Tools/XCon/Spawn Research Pickup", validate = true)]

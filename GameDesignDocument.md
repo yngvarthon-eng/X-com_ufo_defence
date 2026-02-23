@@ -161,7 +161,7 @@ Alternate outcomes: Political collapse, criminal dominance, or unexpected allian
 - **Balance principle:** The UI/controls should support variable squads without rewriting mission rules (avoid hard-coding “exactly 4”).
 
 ### 2.X “Thinking-Box” (Temporary Player Thought UI)
-The Thinking-Box is a temporary, in-game UI element that surfaces the player’s current *intent* and gently pushes the game forward.
+The Thinking-Box is a temporary, in-game UI element presented as the **Commander’s inner monologue**. It surfaces the player’s current *intent* and gently pushes the game forward.
 
 - **Purpose:**
 	- Turn complex systems into clear next steps (tutorialization without stopping the action).
@@ -171,8 +171,16 @@ The Thinking-Box is a temporary, in-game UI element that surfaces the player’s
 - **What it can show (content types):**
 	- **Next objective:** “Investigate crash site”, “Return to base”, “Secure alien artifact”.
 	- **New feature prompt:** “You can now build a radar dish”, “Research unlocked: X”.
-	- **Intel lead:** NIA tip, blackout anomaly, criminal activity clue.
+	- **Intel lead:** framed as the Commander connecting dots: “NIA flagged unusual signals… it’s not random.”
 	- **Post-event reflection:** short summary after a blackout/encounter that frames the next decision.
+
+- **Voice & tone (v1):**
+	- Short, tactical, slightly tense. The Commander is competent and focused.
+	- Avoid comedy; avoid long exposition.
+	- Examples:
+		- “We don’t have enough coverage. A radar dish buys us time.”
+		- “If this is a decoy, they want us to chase it. We need proof.”
+		- “Four operators minimum. Any less and we start losing options.”
 
 - **When it appears (simple triggers):**
 	- First-time moments (first UFO detected, first injury, first loot recovered).
@@ -183,6 +191,11 @@ The Thinking-Box is a temporary, in-game UI element that surfaces the player’s
 	- It should be **short**, skippable, and not block input.
 	- Prefer a **queue** (one thought at a time) over spamming multiple popups.
 	- Player can **dismiss/minimize**; the latest item remains accessible in a log.
+
+- **Integration over time (v2+):**
+	- Additional sources can be layered in later as optional “voices” feeding the same system:
+		- **NIA** (external intel), **Base AI** (systems/optimization), **Squad radio** (ground truth).
+	- Rule: keep the Commander voice as the default narrator, with other voices as tagged variants (never overwhelming the player).
 
 
 ## 3. Game Systems

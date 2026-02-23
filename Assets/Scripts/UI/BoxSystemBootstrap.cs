@@ -44,7 +44,7 @@ namespace XCon.UI.Boxes
         }
     }
 
-    internal sealed class BoxSystemView : MonoBehaviour
+    public sealed class BoxSystemView : MonoBehaviour
     {
         private Text titleText;
         private Text sourceText;
@@ -192,7 +192,7 @@ namespace XCon.UI.Boxes
         }
     }
 
-    internal sealed class BoxDebugHotkeys : MonoBehaviour
+    public sealed class BoxDebugHotkeys : MonoBehaviour
     {
         private bool loggedReady;
 

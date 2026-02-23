@@ -11,6 +11,14 @@ public class Collectible : MonoBehaviour
     [TextArea]
     [SerializeField] private string researchResultSummary = "New manufacturing options unlocked.";
 
+    public void ConfigureResearchCompletePickup(string projectName, string resultSummary, bool destroyOnPickup = true)
+    {
+        this.destroyOnPickup = destroyOnPickup;
+        triggersResearchComplete = true;
+        researchProjectName = string.IsNullOrWhiteSpace(projectName) ? "Research" : projectName;
+        researchResultSummary = resultSummary ?? string.Empty;
+    }
+
     private void OnTriggerEnter(Collider other)
     {
         if (!other.CompareTag("Player")) return;

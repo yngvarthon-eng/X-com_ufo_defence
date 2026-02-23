@@ -15,9 +15,10 @@ namespace XCon.UI.Boxes
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void CreateOnceAfterSceneLoad()
         {
-            // Only bootstrap in GameScene to keep scope tight.
             var activeScene = SceneManager.GetActiveScene();
-            if (activeScene.name != "GameScene")
+
+            // Keep this out of menu-only scenes.
+            if (activeScene.name == "MainMenu")
             {
                 return;
             }
@@ -222,12 +223,13 @@ namespace XCon.UI.Boxes
             }
 #endif
 
+            // Always include legacy Input as a fallback (and provide easier keys than function keys).
             return key switch
             {
-                DebugKey.Info => Input.GetKeyDown(KeyCode.F1),
-                DebugKey.Thinking => Input.GetKeyDown(KeyCode.F2),
-                DebugKey.Critical => Input.GetKeyDown(KeyCode.F3),
-                _ => Input.GetKeyDown(KeyCode.Escape),
+                DebugKey.Info => Input.GetKeyDown(KeyCode.F1) || Input.GetKeyDown(KeyCode.Alpha1),
+                DebugKey.Thinking => Input.GetKeyDown(KeyCode.F2) || Input.GetKeyDown(KeyCode.Alpha2),
+                DebugKey.Critical => Input.GetKeyDown(KeyCode.F3) || Input.GetKeyDown(KeyCode.Alpha3),
+                _ => Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.BackQuote),
             };
         }
     }

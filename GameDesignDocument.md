@@ -160,8 +160,30 @@ Alternate outcomes: Political collapse, criminal dominance, or unexpected allian
 - **Multiplayer assumption:** In co-op, each player can control a subset of units (e.g., 1–3 each) and squads scale naturally with more players.
 - **Balance principle:** The UI/controls should support variable squads without rewriting mission rules (avoid hard-coding “exactly 4”).
 
-### 2.X “Info-Box” (Temporary Player Thought UI)
-The Info-Box is a temporary, in-game UI element presented as the **Commander’s inner monologue**. It surfaces the player’s current *intent* and gently pushes the game forward.
+### 2.X “Info-Box” (Information UI)
+The Info-Box is a temporary, in-game UI element focused on **factual information**: alerts, intel, and system status. It should not try to “play the game” for the player.
+
+- **Purpose:**
+	- Surface important intel and state changes without pausing play.
+	- Keep the player oriented: what changed, where, and what it affects.
+	- Provide a reliable place for short, high-signal notifications.
+
+- **What it can show (content types):**
+	- **Detection/contacts:** UFO sighting, last-known position, confidence level.
+	- **Base/system status:** power, radar coverage changes, damage reports.
+	- **Incoming messages:** NIA briefs, faction updates, mission offers.
+	- **Timers/counts (allowed):** time-to-impact, days remaining, unit count, simple percentages.
+
+- **Voice & tone (v1):**
+	- Neutral, concise, and specific.
+	- Prefer third-person/system phrasing (avoid “I/we/you”).
+	- Examples:
+		- “NIA: Signal spike detected over Tromsø. Confidence: Medium.”
+		- “Radar coverage reduced: -15% (storm interference).”
+		- “Contact lost. Last known heading: East.”
+
+### 2.X “Thinking-Box” (Gameplay Guidance / Commander Inner Monologue)
+The Thinking-Box is a temporary, in-game UI element presented as the **Commander’s inner monologue**. It surfaces the player’s current *intent* and gently pushes the game forward.
 
 - **Purpose:**
 	- Turn complex systems into clear next steps (tutorialization without stopping the action).
@@ -171,7 +193,7 @@ The Info-Box is a temporary, in-game UI element presented as the **Commander’s
 - **What it can show (content types):**
 	- **Next objective:** “Investigate crash site”, “Return to base”, “Secure alien artifact”.
 	- **New feature prompt:** “You can now build a radar dish”, “Research unlocked: X”.
-	- **Intel lead:** framed as the Commander connecting dots: “NIA flagged unusual signals… it’s not random.”
+	- **Reasoning (light):** the Commander connecting dots, without dumping raw data.
 	- **Post-event reflection:** short summary after a blackout/encounter that frames the next decision.
 
 - **Voice & tone (v1):**
@@ -195,7 +217,7 @@ The Info-Box is a temporary, in-game UI element presented as the **Commander’s
 
 - **Design rules (to avoid annoyance):**
 	- It should be **short**, skippable, and not block input.
-	- Prefer a **queue** (one thought at a time) over spamming multiple popups.
+	- Prefer a **queue** (one item at a time) over spamming multiple popups.
 	- Player can **dismiss/minimize**; the latest item remains accessible in a log.
 
 - **Integration over time (v2+):**

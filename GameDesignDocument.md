@@ -149,6 +149,41 @@ Win: Successfully repel alien threats, maintain global stability, and secure adv
 Loss: Earth is overrun, critical bases are destroyed, or resources are depleted beyond recovery.
 Alternate outcomes: Political collapse, criminal dominance, or unexpected alliances may change the endgame scenario.
 
+### 2.X Gameplay Mode Decision (Real-Time First)
+- **Primary direction:** If a full hybrid (turn-based + real-time) becomes too complex, the game defaults to **real-time squad tactics**.
+- **RT style:** Real-time with **pause and/or time-slow** for issuing orders (keeps tactical readability without building full turn logic).
+- **Hybrid as optional layer:** Hybrid transitions can exist as a **stretch goal** or for specific modes/events, but the core game must remain fun and complete in RT-only.
+
+### 2.X Squad Size (Variable, Multiplayer-Friendly)
+- **Baseline squad size:** Minimum **4** units for standard missions.
+- **Variable squad size:** Squad size can change by mission type, transport capacity, difficulty settings, and multiplayer player count.
+- **Multiplayer assumption:** In co-op, each player can control a subset of units (e.g., 1–3 each) and squads scale naturally with more players.
+- **Balance principle:** The UI/controls should support variable squads without rewriting mission rules (avoid hard-coding “exactly 4”).
+
+### 2.X “Thinking-Box” (Temporary Player Thought UI)
+The Thinking-Box is a temporary, in-game UI element that surfaces the player’s current *intent* and gently pushes the game forward.
+
+- **Purpose:**
+	- Turn complex systems into clear next steps (tutorialization without stopping the action).
+	- Provide “what now?” guidance during slow moments.
+	- Introduce and unlock gameplay features in a paced way.
+
+- **What it can show (content types):**
+	- **Next objective:** “Investigate crash site”, “Return to base”, “Secure alien artifact”.
+	- **New feature prompt:** “You can now build a radar dish”, “Research unlocked: X”.
+	- **Intel lead:** NIA tip, blackout anomaly, criminal activity clue.
+	- **Post-event reflection:** short summary after a blackout/encounter that frames the next decision.
+
+- **When it appears (simple triggers):**
+	- First-time moments (first UFO detected, first injury, first loot recovered).
+	- Stalls (player idle too long; no mission selected; resources capped).
+	- World events (blackout begins/ends; NIA message arrives; base attack warning).
+
+- **Design rules (to avoid annoyance):**
+	- It should be **short**, skippable, and not block input.
+	- Prefer a **queue** (one thought at a time) over spamming multiple popups.
+	- Player can **dismiss/minimize**; the latest item remains accessible in a log.
+
 
 ## 3. Game Systems
 - UFO Logic: Instant movement, invisibility, multiple UFOs with separate strategies.

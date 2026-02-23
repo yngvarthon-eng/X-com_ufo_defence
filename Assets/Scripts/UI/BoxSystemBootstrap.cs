@@ -1,0 +1,234 @@
+using UnityEngine;
+using UnityEngine.SceneManagement;
+using UnityEngine.UI;
+
+#if ENABLE_INPUT_SYSTEM
+using UnityEngine.InputSystem;
+#endif
+
+namespace XCon.UI.Boxes
+{
+    public sealed class BoxSystemBootstrap : MonoBehaviour
+    {
+        private const string RootName = "BoxSystem (Runtime)";
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+        private static void CreateOnceAfterSceneLoad()
+        {
+            // Only bootstrap in GameScene to keep scope tight.
+            var activeScene = SceneManager.GetActiveScene();
+            if (activeScene.name != "GameScene")
+            {
+                return;
+            }
+
+            if (GameObject.Find(RootName) != null)
+            {
+                return;
+            }
+
+            var root = new GameObject(RootName);
+            DontDestroyOnLoad(root);
+
+            root.AddComponent<BoxMessageQueue>();
+
+            var view = root.AddComponent<BoxSystemView>();
+            view.BuildUI();
+
+            root.AddComponent<BoxDebugHotkeys>();
+        }
+    }
+
+    internal sealed class BoxSystemView : MonoBehaviour
+    {
+        private Text titleText;
+        private Text sourceText;
+        private Text bodyText;
+        private GameObject panel;
+
+        public void BuildUI()
+        {
+            var canvasGo = new GameObject("BoxCanvas", typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
+            canvasGo.transform.SetParent(transform, false);
+
+            var canvas = canvasGo.GetComponent<Canvas>();
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            canvas.sortingOrder = 1000;
+
+            var scaler = canvasGo.GetComponent<CanvasScaler>();
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = new Vector2(1920, 1080);
+
+            panel = new GameObject("BoxPanel", typeof(Image));
+            panel.transform.SetParent(canvasGo.transform, false);
+
+            var panelImage = panel.GetComponent<Image>();
+            panelImage.color = new Color(0f, 0f, 0f, 0.65f);
+
+            var panelRect = panel.GetComponent<RectTransform>();
+            panelRect.anchorMin = new Vector2(0.02f, 0.02f);
+            panelRect.anchorMax = new Vector2(0.45f, 0.22f);
+            panelRect.offsetMin = Vector2.zero;
+            panelRect.offsetMax = Vector2.zero;
+
+            var titleGo = CreateText("Title", panel.transform, fontSize: 22, fontStyle: FontStyle.Bold);
+            titleText = titleGo.GetComponent<Text>();
+            SetRect(titleGo.GetComponent<RectTransform>(), new Vector2(0.03f, 0.72f), new Vector2(0.97f, 0.97f));
+
+            var sourceGo = CreateText("Source", panel.transform, fontSize: 14, fontStyle: FontStyle.Italic);
+            sourceText = sourceGo.GetComponent<Text>();
+            sourceText.color = new Color(1f, 1f, 1f, 0.85f);
+            SetRect(sourceGo.GetComponent<RectTransform>(), new Vector2(0.03f, 0.58f), new Vector2(0.97f, 0.72f));
+
+            var bodyGo = CreateText("Body", panel.transform, fontSize: 18, fontStyle: FontStyle.Normal);
+            bodyText = bodyGo.GetComponent<Text>();
+            bodyText.color = new Color(1f, 1f, 1f, 0.95f);
+            bodyText.horizontalOverflow = HorizontalWrapMode.Wrap;
+            bodyText.verticalOverflow = VerticalWrapMode.Truncate;
+            SetRect(bodyGo.GetComponent<RectTransform>(), new Vector2(0.03f, 0.10f), new Vector2(0.97f, 0.58f));
+
+            var hintGo = CreateText("Hint", panel.transform, fontSize: 12, fontStyle: FontStyle.Normal);
+            var hintText = hintGo.GetComponent<Text>();
+            hintText.text = "F1=Info  F2=Thinking  F3=Critical  Esc=Dismiss";
+            hintText.color = new Color(1f, 1f, 1f, 0.6f);
+            hintText.alignment = TextAnchor.LowerRight;
+            SetRect(hintGo.GetComponent<RectTransform>(), new Vector2(0.03f, 0.00f), new Vector2(0.97f, 0.10f));
+
+            panel.SetActive(false);
+
+            var queue = BoxMessageQueue.Instance;
+            if (queue != null)
+            {
+                queue.CurrentMessageChanged += OnMessageChanged;
+            }
+        }
+
+        private void OnDestroy()
+        {
+            if (BoxMessageQueue.Instance != null)
+            {
+                BoxMessageQueue.Instance.CurrentMessageChanged -= OnMessageChanged;
+            }
+        }
+
+        private void OnMessageChanged(BoxMessage? message)
+        {
+            if (!panel)
+            {
+                return;
+            }
+
+            if (!message.HasValue)
+            {
+                panel.SetActive(false);
+                return;
+            }
+
+            var m = message.Value;
+            panel.SetActive(true);
+
+            titleText.text = m.Title;
+            bodyText.text = m.Body;
+            sourceText.text = string.IsNullOrWhiteSpace(m.SourceTag) ? $"{m.Channel}" : $"{m.Channel} · {m.SourceTag} · {m.Severity}";
+        }
+
+        private static GameObject CreateText(string name, Transform parent, int fontSize, FontStyle fontStyle)
+        {
+            var go = new GameObject(name, typeof(Text));
+            go.transform.SetParent(parent, false);
+
+            var text = go.GetComponent<Text>();
+            text.font = Resources.GetBuiltinResource<Font>("Arial.ttf");
+            text.fontSize = fontSize;
+            text.fontStyle = fontStyle;
+            text.color = Color.white;
+            text.alignment = TextAnchor.UpperLeft;
+
+            return go;
+        }
+
+        private static void SetRect(RectTransform rect, Vector2 anchorMin, Vector2 anchorMax)
+        {
+            rect.anchorMin = anchorMin;
+            rect.anchorMax = anchorMax;
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+        }
+    }
+
+    internal sealed class BoxDebugHotkeys : MonoBehaviour
+    {
+        private void Update()
+        {
+            if (BoxMessageQueue.Instance == null)
+            {
+                return;
+            }
+
+            if (WasPressed(DebugKey.Info))
+            {
+                BoxMessageQueue.Instance.Publish(new BoxMessage(
+                    triggerKey: "debug/info/contact_detected",
+                    channel: BoxChannel.Info,
+                    severity: BoxSeverity.Info,
+                    sourceTag: "NIA",
+                    title: "Contact Detected",
+                    body: "Contact detected. Region: North Sea. Confidence: High."));
+            }
+
+            if (WasPressed(DebugKey.Thinking))
+            {
+                BoxMessageQueue.Instance.Publish(new BoxMessage(
+                    triggerKey: "debug/thinking/stall",
+                    channel: BoxChannel.Thinking,
+                    severity: BoxSeverity.Info,
+                    sourceTag: "Commander",
+                    title: "Next Move",
+                    body: "You’re waiting. Pick a priority: coverage, research, or response."));
+            }
+
+            if (WasPressed(DebugKey.Critical))
+            {
+                BoxMessageQueue.Instance.Publish(new BoxMessage(
+                    triggerKey: "debug/info/intercept_window",
+                    channel: BoxChannel.Info,
+                    severity: BoxSeverity.Critical,
+                    sourceTag: "System",
+                    title: "Intercept Window",
+                    body: "Intercept window: 02:15 remaining."));
+            }
+
+            if (WasPressed(DebugKey.Dismiss))
+            {
+                BoxMessageQueue.Instance.DismissCurrent();
+            }
+        }
+
+        private enum DebugKey { Info, Thinking, Critical, Dismiss }
+
+        private static bool WasPressed(DebugKey key)
+        {
+#if ENABLE_INPUT_SYSTEM
+            var keyboard = Keyboard.current;
+            if (keyboard != null)
+            {
+                return key switch
+                {
+                    DebugKey.Info => keyboard.f1Key.wasPressedThisFrame,
+                    DebugKey.Thinking => keyboard.f2Key.wasPressedThisFrame,
+                    DebugKey.Critical => keyboard.f3Key.wasPressedThisFrame,
+                    _ => keyboard.escapeKey.wasPressedThisFrame,
+                };
+            }
+#endif
+
+            return key switch
+            {
+                DebugKey.Info => Input.GetKeyDown(KeyCode.F1),
+                DebugKey.Thinking => Input.GetKeyDown(KeyCode.F2),
+                DebugKey.Critical => Input.GetKeyDown(KeyCode.F3),
+                _ => Input.GetKeyDown(KeyCode.Escape),
+            };
+        }
+    }
+}

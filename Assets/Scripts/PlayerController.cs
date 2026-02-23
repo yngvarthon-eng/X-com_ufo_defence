@@ -8,6 +8,31 @@ public class PlayerController : MonoBehaviour
     private Vector2 moveInput;
     private Rigidbody rb;
 
+    private static Vector2 GetKeyboardMoveFallback(Vector2 current)
+    {
+        // Only apply fallback if we currently have no input.
+        if (current.sqrMagnitude > 0.0001f)
+        {
+            return current;
+        }
+
+        var keyboard = Keyboard.current;
+        if (keyboard == null)
+        {
+            return current;
+        }
+
+        var x = 0f;
+        var y = 0f;
+
+        if (keyboard.aKey.isPressed || keyboard.leftArrowKey.isPressed) x -= 1f;
+        if (keyboard.dKey.isPressed || keyboard.rightArrowKey.isPressed) x += 1f;
+        if (keyboard.sKey.isPressed || keyboard.downArrowKey.isPressed) y -= 1f;
+        if (keyboard.wKey.isPressed || keyboard.upArrowKey.isPressed) y += 1f;
+
+        return new Vector2(x, y);
+    }
+
     private void Awake()
     {
         rb = GetComponent<Rigidbody>();
@@ -38,7 +63,8 @@ public class PlayerController : MonoBehaviour
             return;
         }
 
-        Vector2 clampedInput = Vector2.ClampMagnitude(moveInput, 1f);
+        var effectiveInput = GetKeyboardMoveFallback(moveInput);
+        Vector2 clampedInput = Vector2.ClampMagnitude(effectiveInput, 1f);
         Vector3 move = new Vector3(clampedInput.x, 0f, clampedInput.y) * moveSpeed * Time.deltaTime;
         transform.Translate(move, Space.World);
     }
@@ -50,7 +76,8 @@ public class PlayerController : MonoBehaviour
             return;
         }
 
-        Vector2 clampedInput = Vector2.ClampMagnitude(moveInput, 1f);
+        var effectiveInput = GetKeyboardMoveFallback(moveInput);
+        Vector2 clampedInput = Vector2.ClampMagnitude(effectiveInput, 1f);
         var move = new Vector3(clampedInput.x, 0f, clampedInput.y);
 
         if (rb.isKinematic)

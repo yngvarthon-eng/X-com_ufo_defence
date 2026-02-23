@@ -21,14 +21,24 @@ public class Collectible : MonoBehaviour
 
     private void OnTriggerEnter(Collider other)
     {
-        if (!other.CompareTag("Player")) return;
+        if (!IsPlayer(other.gameObject)) return;
         HandlePickup(other.gameObject);
     }
 
     private void OnCollisionEnter(Collision collision)
     {
-        if (!collision.collider.CompareTag("Player")) return;
+        if (!IsPlayer(collision.collider.gameObject)) return;
         HandlePickup(collision.collider.gameObject);
+    }
+
+    private static bool IsPlayer(GameObject go)
+    {
+        if (go == null)
+        {
+            return false;
+        }
+
+        return go.CompareTag("Player") || go.GetComponent<PlayerController>() != null;
     }
 
     private void HandlePickup(GameObject player)

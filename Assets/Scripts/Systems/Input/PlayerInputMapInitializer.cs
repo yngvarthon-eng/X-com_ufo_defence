@@ -65,6 +65,10 @@ namespace XCon.Systems.Input
             if (!string.IsNullOrWhiteSpace(mapName))
             {
                 playerInput.SwitchCurrentActionMap(mapName);
+
+                // Be explicit: ensure the selected map is enabled.
+                // (In some configurations, switching maps may not result in an enabled current map.)
+                playerInput.currentActionMap?.Enable();
             }
         }
     }

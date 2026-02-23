@@ -31,6 +31,10 @@ namespace XCon.UI.Boxes
             var root = new GameObject(RootName);
             DontDestroyOnLoad(root);
 
+#if UNITY_EDITOR
+            Debug.Log($"[BoxSystem] Bootstrapping in scene '{activeScene.name}'.");
+#endif
+
             root.AddComponent<BoxMessageQueue>();
 
             var view = root.AddComponent<BoxSystemView>();
@@ -46,6 +50,7 @@ namespace XCon.UI.Boxes
         private Text sourceText;
         private Text bodyText;
         private GameObject panel;
+        private bool subscribed;
 
         public void BuildUI()
         {
@@ -97,10 +102,20 @@ namespace XCon.UI.Boxes
 
             panel.SetActive(false);
 
-            var queue = BoxMessageQueue.Instance;
-            if (queue != null)
+            TrySubscribe();
+        }
+
+        private void OnEnable()
+        {
+            TrySubscribe();
+        }
+
+        private void Update()
+        {
+            // In some editor/playmode configurations, Instance may not be available at BuildUI time.
+            if (!subscribed)
             {
-                queue.CurrentMessageChanged += OnMessageChanged;
+                TrySubscribe();
             }
         }
 
@@ -110,6 +125,26 @@ namespace XCon.UI.Boxes
             {
                 BoxMessageQueue.Instance.CurrentMessageChanged -= OnMessageChanged;
             }
+        }
+
+        private void TrySubscribe()
+        {
+            if (subscribed)
+            {
+                return;
+            }
+
+            var queue = BoxMessageQueue.Instance;
+            if (queue == null)
+            {
+                return;
+            }
+
+            queue.CurrentMessageChanged += OnMessageChanged;
+            subscribed = true;
+
+            // Sync current state immediately.
+            OnMessageChanged(queue.Current);
         }
 
         private void OnMessageChanged(BoxMessage? message)
@@ -159,12 +194,22 @@ namespace XCon.UI.Boxes
 
     internal sealed class BoxDebugHotkeys : MonoBehaviour
     {
+        private bool loggedReady;
+
         private void Update()
         {
             if (BoxMessageQueue.Instance == null)
             {
                 return;
             }
+
+#if UNITY_EDITOR
+            if (!loggedReady)
+            {
+                loggedReady = true;
+                Debug.Log("[BoxSystem] Hotkeys active. Use 1/2/3 (or F1/F2/F3) and Esc to dismiss.");
+            }
+#endif
 
             if (WasPressed(DebugKey.Info))
             {
@@ -209,28 +254,32 @@ namespace XCon.UI.Boxes
 
         private static bool WasPressed(DebugKey key)
         {
+            var pressed = false;
+
 #if ENABLE_INPUT_SYSTEM
             var keyboard = Keyboard.current;
             if (keyboard != null)
             {
-                return key switch
+                pressed |= key switch
                 {
-                    DebugKey.Info => keyboard.f1Key.wasPressedThisFrame,
-                    DebugKey.Thinking => keyboard.f2Key.wasPressedThisFrame,
-                    DebugKey.Critical => keyboard.f3Key.wasPressedThisFrame,
-                    _ => keyboard.escapeKey.wasPressedThisFrame,
+                    DebugKey.Info => keyboard.f1Key.wasPressedThisFrame || keyboard.digit1Key.wasPressedThisFrame,
+                    DebugKey.Thinking => keyboard.f2Key.wasPressedThisFrame || keyboard.digit2Key.wasPressedThisFrame,
+                    DebugKey.Critical => keyboard.f3Key.wasPressedThisFrame || keyboard.digit3Key.wasPressedThisFrame,
+                    _ => keyboard.escapeKey.wasPressedThisFrame || keyboard.backquoteKey.wasPressedThisFrame,
                 };
             }
 #endif
 
-            // Always include legacy Input as a fallback (and provide easier keys than function keys).
-            return key switch
+            // Also include legacy Input (works when Active Input Handling = Both).
+            pressed |= key switch
             {
                 DebugKey.Info => Input.GetKeyDown(KeyCode.F1) || Input.GetKeyDown(KeyCode.Alpha1),
                 DebugKey.Thinking => Input.GetKeyDown(KeyCode.F2) || Input.GetKeyDown(KeyCode.Alpha2),
                 DebugKey.Critical => Input.GetKeyDown(KeyCode.F3) || Input.GetKeyDown(KeyCode.Alpha3),
                 _ => Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.BackQuote),
             };
+
+            return pressed;
         }
     }
 }

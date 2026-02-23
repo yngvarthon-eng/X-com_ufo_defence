@@ -182,6 +182,16 @@ The Info-Box is a temporary, in-game UI element focused on **factual information
 		- “Radar coverage reduced: -15% (storm interference).”
 		- “Contact lost. Last known heading: East.”
 
+- **Example triggers (v1):**
+
+| Trigger | Example output | Notes |
+|---|---|---|
+| New contact detected | “Contact detected. Region: North Sea. Confidence: High.” | Fire on first detection and on major confidence changes |
+| Contact state change | “Contact lost. Last known heading: East.” | Avoid spam: rate-limit state flips |
+| Incoming intel message | “NIA: Unusual signals correlated with coastal storms.” | Tags the source; no gameplay instruction |
+| Base/system threshold | “Power critical: backup generators engaged.” | Use thresholds (OK → Warn → Critical), not continuous values |
+| Time-critical alert | “Intercept window: 02:15 remaining.” | Timers allowed when they reduce confusion |
+
 ### 2.X “Thinking-Box” (Gameplay Guidance / Commander Inner Monologue)
 The Thinking-Box is a temporary, in-game UI element presented as the **Commander’s inner monologue**. It surfaces the player’s current *intent* and gently pushes the game forward.
 
@@ -210,10 +220,15 @@ The Thinking-Box is a temporary, in-game UI element presented as the **Commander
 		- “If this is a decoy, they want us to chase it. We need proof.”
 		- “Four operators minimum. Any less and we start losing options.”
 
-- **When it appears (simple triggers):**
-	- First-time moments (first UFO detected, first injury, first loot recovered).
-	- Stalls (player idle too long; no mission selected; resources capped).
-	- World events (blackout begins/ends; NIA message arrives; base attack warning).
+- **Example triggers (v1):**
+
+| Trigger | Example output | Notes |
+|---|---|---|
+| First-time milestone | “We’ve got our first confirmed contact. Stay calm—verify and commit.” | One-time per campaign milestone |
+| Decision stall | “You’re waiting. Pick a priority: coverage, research, or response.” | Only if the player is idle/looping; can be disabled |
+| New option unlocked | “We can build a radar dish now. Coverage buys us time.” | “What/why” is OK; avoid deep numbers here |
+| Post-event reflection | “That blackout wasn’t random. Something wanted us blind.” | Bridges into a next step without hard-mandating it |
+| Pre-mission reminder | “You’re overextended. Split the team or pull back.” | Contextual, actionable, brief |
 
 - **Design rules (to avoid annoyance):**
 	- It should be **short**, skippable, and not block input.

@@ -88,7 +88,7 @@ public class PlayerController : MonoBehaviour
         {
             // Drive velocity directly for dynamic rigidbodies.
             var v = move * moveSpeed;
-            rb.velocity = new Vector3(v.x, rb.velocity.y, v.z);
+            rb.linearVelocity = new Vector3(v.x, rb.linearVelocity.y, v.z);
         }
     }
 }

@@ -62,7 +62,7 @@ namespace XCon.EditorTools
                     return;
                 }
 
-                var queue = Object.FindAnyObjectByType<BoxMessageQueue>();
+                var queue = UnityEngine.Object.FindAnyObjectByType<BoxMessageQueue>();
                 const string readyKey = "debug/boxsystem/ready";
 
                 queue?.Publish(new BoxMessage(

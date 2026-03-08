@@ -241,7 +241,7 @@ namespace XCon.UI.Boxes
             var queue = BoxMessageQueue.Instance;
             if (queue == null)
             {
-                queue = Object.FindAnyObjectByType<BoxMessageQueue>();
+                queue = UnityEngine.Object.FindAnyObjectByType<BoxMessageQueue>();
                 if (queue == null)
                 {
                     return;

@@ -84,7 +84,7 @@ public sealed class ResearchManager : MonoBehaviour
             return queue;
         }
 
-        return Object.FindAnyObjectByType<BoxMessageQueue>();
+        return UnityEngine.Object.FindAnyObjectByType<BoxMessageQueue>();
     }
 
     private static string SanitizeKey(string value)

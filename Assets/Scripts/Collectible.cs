@@ -45,7 +45,7 @@ public class Collectible : MonoBehaviour
     private void HandlePickup(GameObject player)
     {
         // Visible confirmation for debugging.
-        var queue = BoxMessageQueue.Instance != null ? BoxMessageQueue.Instance : Object.FindAnyObjectByType<BoxMessageQueue>();
+        var queue = BoxMessageQueue.Instance != null ? BoxMessageQueue.Instance : UnityEngine.Object.FindAnyObjectByType<BoxMessageQueue>();
         queue?.Publish(new BoxMessage(
             triggerKey: $"debug/pickup/{gameObject.name}",
             channel: BoxChannel.Info,
@@ -56,7 +56,7 @@ public class Collectible : MonoBehaviour
 
         if (triggersResearchComplete)
         {
-            var research = Object.FindAnyObjectByType<ResearchManager>();
+            var research = UnityEngine.Object.FindAnyObjectByType<ResearchManager>();
             if (research != null)
             {
                 research.CompleteResearch(researchProjectName, researchResultSummary);

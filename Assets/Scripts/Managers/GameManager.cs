@@ -19,7 +19,7 @@ public class GameManager : MonoBehaviour
             return;
         }
 
-        var existing = Object.FindAnyObjectByType<GameManager>();
+        var existing = UnityEngine.Object.FindAnyObjectByType<GameManager>();
         if (existing != null)
         {
             Instance = existing;
@@ -39,7 +39,7 @@ public class GameManager : MonoBehaviour
             return;
         }
 
-        var existing = Object.FindAnyObjectByType<GameManager>();
+        var existing = UnityEngine.Object.FindAnyObjectByType<GameManager>();
         if (existing != null)
         {
             Instance = existing;

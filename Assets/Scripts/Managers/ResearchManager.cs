@@ -59,7 +59,7 @@ public sealed class ResearchManager : MonoBehaviour
             severity: BoxSeverity.Info,
             sourceTag: "Commander",
             title: "Pick a Priority",
-            body: "Pick a priority: coverage, research, or response."));
+            body: "Pick a priority:\n1) Coverage\n2) Research\n3) Response"));
     }
 
     [ContextMenu("Debug/Complete Sample Research")]

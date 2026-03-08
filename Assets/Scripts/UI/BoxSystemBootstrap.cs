@@ -1,6 +1,9 @@
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
+using System;
+using System.Collections.Generic;
+using System.Text;
 
 #if ENABLE_INPUT_SYSTEM
 using UnityEngine.InputSystem;
@@ -81,7 +84,10 @@ namespace XCon.UI.Boxes
         private Text titleText;
         private Text sourceText;
         private Text bodyText;
+        private Text queueText;
         private GameObject panel;
+        private readonly List<BoxMessage> queuedBuffer = new();
+        private BoxMessageQueue queue;
         private bool subscribed;
 
         public void BuildUI()
@@ -105,7 +111,7 @@ namespace XCon.UI.Boxes
 
             var panelRect = panel.GetComponent<RectTransform>();
             panelRect.anchorMin = new Vector2(0.02f, 0.02f);
-            panelRect.anchorMax = new Vector2(0.45f, 0.22f);
+            panelRect.anchorMax = new Vector2(0.45f, 0.30f);
             panelRect.offsetMin = Vector2.zero;
             panelRect.offsetMax = Vector2.zero;
 
@@ -123,7 +129,15 @@ namespace XCon.UI.Boxes
             bodyText.color = new Color(1f, 1f, 1f, 0.95f);
             bodyText.horizontalOverflow = HorizontalWrapMode.Wrap;
             bodyText.verticalOverflow = VerticalWrapMode.Truncate;
-            SetRect(bodyGo.GetComponent<RectTransform>(), new Vector2(0.03f, 0.10f), new Vector2(0.97f, 0.58f));
+            SetRect(bodyGo.GetComponent<RectTransform>(), new Vector2(0.03f, 0.16f), new Vector2(0.97f, 0.58f));
+
+            var queueGo = CreateText("Queue", panel.transform, fontSize: 12, fontStyle: FontStyle.Normal);
+            queueText = queueGo.GetComponent<Text>();
+            queueText.color = new Color(1f, 1f, 1f, 0.7f);
+            queueText.alignment = TextAnchor.LowerLeft;
+            queueText.horizontalOverflow = HorizontalWrapMode.Wrap;
+            queueText.verticalOverflow = VerticalWrapMode.Truncate;
+            SetRect(queueGo.GetComponent<RectTransform>(), new Vector2(0.03f, 0.10f), new Vector2(0.97f, 0.16f));
 
             var hintGo = CreateText("Hint", panel.transform, fontSize: 12, fontStyle: FontStyle.Normal);
             var hintText = hintGo.GetComponent<Text>();
@@ -149,13 +163,56 @@ namespace XCon.UI.Boxes
             {
                 TrySubscribe();
             }
+
+            if (queue == null)
+            {
+                queue = BoxMessageQueue.Instance;
+            }
+
+            if (queue == null)
+            {
+                return;
+            }
+
+            if (!queue.Current.HasValue)
+            {
+                return;
+            }
+
+            var current = queue.Current.Value;
+            if (!string.IsNullOrWhiteSpace(current.TriggerKey)
+                && current.TriggerKey.StartsWith("ufo/response_choice/", StringComparison.Ordinal))
+            {
+                // Don't allow dismissing interactive prompts; they should be answered instead.
+                return;
+            }
+
+            var dismissPressed = false;
+
+#if ENABLE_INPUT_SYSTEM
+            var keyboard = Keyboard.current;
+            if (keyboard != null)
+            {
+                dismissPressed |= keyboard.escapeKey.wasPressedThisFrame || keyboard.backquoteKey.wasPressedThisFrame;
+            }
+#endif
+
+#if ENABLE_LEGACY_INPUT_MANAGER
+            dismissPressed |= Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.BackQuote);
+#endif
+
+            if (dismissPressed)
+            {
+                queue.DismissCurrent();
+            }
         }
 
         private void OnDestroy()
         {
-            if (BoxMessageQueue.Instance != null)
+            if (queue != null)
             {
-                BoxMessageQueue.Instance.CurrentMessageChanged -= OnMessageChanged;
+                queue.CurrentMessageChanged -= OnMessageChanged;
+                queue.StateChanged -= OnStateChanged;
             }
         }
 
@@ -172,15 +229,39 @@ namespace XCon.UI.Boxes
                 return;
             }
 
+            this.queue = queue;
+
             queue.CurrentMessageChanged += OnMessageChanged;
+            queue.StateChanged += OnStateChanged;
             subscribed = true;
 
             // Sync current state immediately.
-            OnMessageChanged(queue.Current);
+            Refresh(queue);
+        }
+
+        private void OnStateChanged()
+        {
+            if (queue == null)
+            {
+                return;
+            }
+
+            Refresh(queue);
         }
 
         private void OnMessageChanged(BoxMessage? message)
         {
+            if (queue == null)
+            {
+                queue = BoxMessageQueue.Instance;
+            }
+
+            if (queue != null)
+            {
+                Refresh(queue);
+                return;
+            }
+
             if (!panel)
             {
                 return;
@@ -198,6 +279,92 @@ namespace XCon.UI.Boxes
             titleText.text = m.Title;
             bodyText.text = m.Body;
             sourceText.text = string.IsNullOrWhiteSpace(m.SourceTag) ? $"{m.Channel}" : $"{m.Channel} · {m.SourceTag} · {m.Severity}";
+        }
+
+        private void Refresh(BoxMessageQueue queue)
+        {
+            if (!panel)
+            {
+                return;
+            }
+
+            var message = queue.Current;
+            if (!message.HasValue)
+            {
+                panel.SetActive(false);
+                return;
+            }
+
+            var m = message.Value;
+            panel.SetActive(true);
+
+            titleText.text = m.Title;
+            bodyText.text = m.Body;
+            sourceText.text = string.IsNullOrWhiteSpace(m.SourceTag) ? $"{m.Channel}" : $"{m.Channel} · {m.SourceTag} · {m.Severity}";
+
+            queuedBuffer.Clear();
+            queue.CopyQueuedMessages(queuedBuffer);
+            queuedBuffer.Sort((a, b) => GetPriority(b).CompareTo(GetPriority(a)));
+
+            queueText.text = BuildQueuePreview(queuedBuffer, maxItems: 3);
+            queueText.gameObject.SetActive(!string.IsNullOrWhiteSpace(queueText.text));
+        }
+
+        private static string BuildQueuePreview(List<BoxMessage> queued, int maxItems)
+        {
+            if (queued == null || queued.Count == 0 || maxItems <= 0)
+            {
+                return string.Empty;
+            }
+
+            var count = Mathf.Min(maxItems, queued.Count);
+            var sb = new StringBuilder(256);
+
+            sb.AppendLine("Next:");
+            for (var i = 0; i < count; i++)
+            {
+                var m = queued[i];
+                sb.Append("- ");
+                sb.Append(FormatTag(m));
+                sb.Append(' ');
+                sb.Append(m.Title);
+                if (i < count - 1)
+                {
+                    sb.AppendLine();
+                }
+            }
+
+            return sb.ToString();
+        }
+
+        private static string FormatTag(BoxMessage message)
+        {
+            if (message.Channel == BoxChannel.Thinking)
+            {
+                return "[Thinking]";
+            }
+
+            return message.Severity switch
+            {
+                BoxSeverity.Critical => "[Critical]",
+                BoxSeverity.Warn => "[Warn]",
+                _ => "[Info]",
+            };
+        }
+
+        private static int GetPriority(BoxMessage message)
+        {
+            if (message.Channel == BoxChannel.Info)
+            {
+                return message.Severity switch
+                {
+                    BoxSeverity.Critical => 400,
+                    BoxSeverity.Warn => 300,
+                    _ => 100,
+                };
+            }
+
+            return 200;
         }
 
         private static GameObject CreateText(string name, Transform parent, int fontSize, FontStyle fontStyle)
@@ -307,12 +474,22 @@ namespace XCon.UI.Boxes
             {
                 pressed |= key switch
                 {
-                    DebugKey.Info => keyboard.f1Key.wasPressedThisFrame || keyboard.digit1Key.wasPressedThisFrame,
-                    DebugKey.Thinking => keyboard.f2Key.wasPressedThisFrame || keyboard.digit2Key.wasPressedThisFrame,
-                    DebugKey.Critical => keyboard.f3Key.wasPressedThisFrame || keyboard.digit3Key.wasPressedThisFrame,
+                    DebugKey.Info => keyboard.f1Key.wasPressedThisFrame,
+                    DebugKey.Thinking => keyboard.f2Key.wasPressedThisFrame,
+                    DebugKey.Critical => keyboard.f3Key.wasPressedThisFrame,
                     _ => keyboard.escapeKey.wasPressedThisFrame || keyboard.backquoteKey.wasPressedThisFrame,
                 };
             }
+#endif
+
+#if ENABLE_LEGACY_INPUT_MANAGER
+            pressed |= key switch
+            {
+                DebugKey.Info => Input.GetKeyDown(KeyCode.F1),
+                DebugKey.Thinking => Input.GetKeyDown(KeyCode.F2),
+                DebugKey.Critical => Input.GetKeyDown(KeyCode.F3),
+                _ => Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.BackQuote),
+            };
 #endif
 
             return pressed;

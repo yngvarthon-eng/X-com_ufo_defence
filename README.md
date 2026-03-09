@@ -29,6 +29,11 @@ Unity project structure for a strategy/simulator game inspired by X-Com/UFO Defe
 3. Serve development build locally:
 	- `scripts/webgl_serve_dev.sh 8080`
 	- Open `http://localhost:8080` in your browser.
+4. Stamp a versioned release artifact:
+	- `scripts/webgl_release.sh v0.1.0-rc1`
+	- Output goes to `Builds/WebGL/releases/v0.1.0-rc1`.
+5. Deploy versioned release artifact to staging:
+	- `scripts/webgl_deploy_staging.sh v0.1.0-rc1 user@host:/var/www/xcon/`
 
 Notes:
 - The scripts default to Unity `6000.3.10f1` at `/home/yngvar/Unity/Hub/Editor/6000.3.10f1/Editor/Unity`.

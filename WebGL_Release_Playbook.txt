@@ -1,0 +1,121 @@
+WebGL Release Playbook - x-con_ufo_defence
+Date: 2026-03-09
+
+========================================
+1) WebGL Checklist
+========================================
+
+1. Build target
+- File > Build Settings > WebGL.
+- Verify Scenes In Build are correct and ordered.
+
+2. Player settings baseline
+- Product name/version set.
+- Color Space: test Gamma first for performance, switch to Linear only if acceptable.
+- Managed Stripping Level: Low or Medium to start.
+- API Compatibility: .NET Standard 2.1 (unless package requires otherwise).
+
+3. WebGL publishing settings
+- Compression Format: Brotli (preferred) or Gzip.
+- Decompression Fallback: Off if server headers are correct.
+- Name Files As Hashes: On.
+- Data Caching: On.
+
+4. Memory and performance
+- Keep texture sizes/compression web-friendly.
+- Keep audio compressed.
+- Avoid loading all large assets at startup.
+- Profile in browser early.
+
+5. Browser/runtime compatibility
+- Test input focus (click to focus, tab switch).
+- Test window resize/fullscreen.
+- Check browser console for errors/warnings.
+
+6. Build/test matrix
+- Development build first (debug pass).
+- Release build second (final pass).
+- Test at least Chrome + Firefox.
+
+7. Hosting correctness
+- Serve correct MIME types (.wasm, .data, .js).
+- Serve compression headers if using Brotli/Gzip.
+- Use HTTPS.
+
+8. Final smoke test
+- Hard refresh and private window.
+- Validate load time, gameplay loop, and no critical console errors.
+
+========================================
+2) Safe Publish Workflow
+========================================
+
+1. Create release branch/tag
+- Example: release/webgl-v0.1.0
+
+2. Freeze scope
+- Only include tested web-ready changes.
+
+3. Build A: diagnostics
+- Development Build = On.
+- Optional: Autoconnect Profiler.
+- Run smoke pass and collect issues.
+
+4. Fix and retest
+- Fix critical issues only.
+
+5. Build B: release candidate
+- Development Build = Off.
+- Output to versioned folder, e.g. Builds/WebGL/v0.1.0-rc1
+
+6. Deploy to staging
+- Test from hosted URL (not only localhost).
+
+7. Browser matrix validation
+- Chrome + Firefox (+ Edge optional).
+
+8. Go/No-Go gate
+- No critical errors.
+- Acceptable load/performance.
+- Core loop stable for 10-15 minutes.
+
+9. Promote same artifact to production
+- Avoid rebuilding between staging pass and production deploy.
+
+10. Rollback readiness
+- Keep previous artifact available.
+- Patch forward as v0.1.1 if needed.
+
+========================================
+3) Next Procedure Started (Current Project Audit)
+========================================
+
+Current observed settings (ProjectSettings/ProjectSettings.asset):
+- m_ActiveColorSpace: 0 (Gamma)
+- webGLCompressionFormat: 1
+- webGLDataCaching: 1
+- webGLNameFilesAsHashes: 1
+- webGLDecompressionFallback: 0
+- webGLInitialMemorySize: 32
+- webGLMaximumMemorySize: 2048
+- webGLMemoryGrowthMode: 2
+- webGLThreadsSupport: 0
+- webGLTemplate: APPLICATION:Default
+- apiCompatibilityLevel: 6
+
+Interpretation notes:
+- Data caching and fallback settings are already in a good direction.
+- Name Files As Hashes is already On (good for cache-safe deploys).
+
+Immediate next actions (safe order):
+1. Make Development Build and run browser console/profiler pass.
+2. Build release candidate and stage-deploy for real hosting validation.
+
+Optional release preset for first public web build:
+- Compression: Brotli
+- Decompression Fallback: Off
+- Data Caching: On
+- Name Files As Hashes: On
+- Color Space: Gamma (first release)
+
+End of playbook.

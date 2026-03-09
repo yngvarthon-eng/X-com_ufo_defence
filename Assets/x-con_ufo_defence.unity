@@ -463,7 +463,8 @@ MonoBehaviour:
     Do not approach
     crash sites. Report sightings early. Certified response teams only.'
   debugShowPriorityEffectsInBoxes: 1
-  debugLogPriorityEffects: 1
+  debugLogPriorityEffects: 0
+  debugLogUfoEvents: 0
 --- !u!114 &2044924458
 MonoBehaviour:
   m_ObjectHideFlags: 0

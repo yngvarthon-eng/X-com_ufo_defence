@@ -137,6 +137,9 @@ public class UFOManager : MonoBehaviour
     [Tooltip("If enabled, logs applied priority multipliers/deltas to the Console.")]
     [SerializeField] private bool debugLogPriorityEffects = false;
 
+    [Tooltip("If enabled, logs UFO spawn/move events to the Console.")]
+    [SerializeField] private bool debugLogUfoEvents = false;
+
     private float softStartBeganAt;
     private bool publishedPapalWarning;
 
@@ -226,7 +229,7 @@ public class UFOManager : MonoBehaviour
 
     public void SpawnUFO(Vector3 position)
     {
-        Debug.Log("UFO spawned at " + position);
+        DebugLogUfoEvent("UFO spawned at " + position);
 
         if (!publishUfoSpottedBoxes)
         {
@@ -479,6 +482,16 @@ public class UFOManager : MonoBehaviour
     private void DebugLogPriority(string message)
     {
         if (!debugLogPriorityEffects)
+        {
+            return;
+        }
+
+        Debug.Log(message);
+    }
+
+    private void DebugLogUfoEvent(string message)
+    {
+        if (!debugLogUfoEvents)
         {
             return;
         }
@@ -1586,7 +1599,7 @@ public class UFOManager : MonoBehaviour
     {
         // TODO: Move UFO to target position
         ufo.transform.position = targetPosition;
-        Debug.Log("UFO moved to " + targetPosition);
+        DebugLogUfoEvent("UFO moved to " + targetPosition);
     }
 
     private IEnumerator PublishThinking(BoxMessageQueue queue)

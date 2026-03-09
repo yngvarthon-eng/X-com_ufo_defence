@@ -21,6 +21,20 @@ Unity project structure for a strategy/simulator game inspired by X-Com/UFO Defe
 3. Start coding in Assets/Scripts/Managers (GameManager, BaseManager, UFOManager, SquadManager).
 4. Use version control (Git) for tracking changes.
 
+## WebGL Build Workflow
+1. Build development WebGL output:
+	- `scripts/webgl_build.sh dev`
+2. Build release-candidate WebGL output:
+	- `scripts/webgl_build.sh rc`
+3. Serve development build locally:
+	- `scripts/webgl_serve_dev.sh 8080`
+	- Open `http://localhost:8080` in your browser.
+
+Notes:
+- The scripts default to Unity `6000.3.10f1` at `/home/yngvar/Unity/Hub/Editor/6000.3.10f1/Editor/Unity`.
+- Override Unity path with `UNITY_BIN=/path/to/Unity`.
+- Logs are written to `Logs/WebGL_DevBuild.log` and `Logs/WebGL_RCBuild.log`.
+
 ## Next Steps
 - Add prefabs, art, and audio assets as development progresses.
 - Expand scripts for game systems and UI.

@@ -850,6 +850,7 @@ public class GameManager : MonoBehaviour
         text.alignment = TextAnchor.UpperCenter;
         text.color = Color.white;
         text.supportRichText = true;
+        text.raycastTarget = false;
         text.horizontalOverflow = HorizontalWrapMode.Wrap;
         text.verticalOverflow = VerticalWrapMode.Overflow;
         text.text = content;

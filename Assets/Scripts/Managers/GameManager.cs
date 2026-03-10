@@ -1,5 +1,6 @@
 using UnityEngine;
 using XCon.UI.Boxes;
+using System.Collections;
 
 #if ENABLE_INPUT_SYSTEM
 using UnityEngine.InputSystem;
@@ -113,6 +114,48 @@ public class GameManager : MonoBehaviour
         {
             gameObject.AddComponent<BaseManager>();
         }
+
+        StartCoroutine(PublishStartupWelcomePrompt());
+    }
+
+    private IEnumerator PublishStartupWelcomePrompt()
+    {
+        // Box system bootstraps at runtime; wait briefly to ensure queue availability.
+        var timeoutAt = Time.realtimeSinceStartup + 2f;
+        BoxMessageQueue queue = null;
+        while (Time.realtimeSinceStartup < timeoutAt)
+        {
+            queue = BoxMessageQueue.Instance != null
+                ? BoxMessageQueue.Instance
+                : UnityEngine.Object.FindAnyObjectByType<BoxMessageQueue>();
+
+            if (queue != null)
+            {
+                break;
+            }
+
+            yield return null;
+        }
+
+        if (queue == null)
+        {
+            yield break;
+        }
+
+        queue.Publish(new BoxMessage(
+            triggerKey: PickPriorityTriggerKey,
+            channel: BoxChannel.Thinking,
+            severity: BoxSeverity.Info,
+            sourceTag: "Commander",
+            title: "Welcome, Commander",
+            body:
+                "Welcome to X-Con U.F.O Defence.\n" +
+                "Your mission is to detect contacts, assess incidents, and choose the right response before threats escalate.\n\n" +
+                "Core controls:\n" +
+                "1-3: Strategic Priority (Coverage / Research / Response)\n" +
+                "1-4: Contact Response (Ignore / Track / Intercept / Dispatch)\n" +
+                "Esc: Dismiss non-interactive messages\n\n" +
+                "Start by selecting your Strategic Priority. Good luck."));
     }
 
     private void Update()

@@ -130,7 +130,7 @@ public class UFOManager : MonoBehaviour
     [SerializeField] private float responseChoiceDelaySeconds = 2.0f;
     [Tooltip("How long the response choice stays active before it expires (seconds). 0 = never expires.")]
     [Min(0f)]
-    [SerializeField] private float responseChoiceTimeoutSeconds = 20f;
+    [SerializeField] private float responseChoiceTimeoutSeconds = 26f;
 
     [Tooltip("How many past contacts to keep in memory for response tracking.")]
     [Min(1)]
@@ -1141,7 +1141,21 @@ public class UFOManager : MonoBehaviour
         }
 
         var key = GetResponseChoiceTriggerKey(pendingContactId);
-        queue.UpdateBody(key, BuildResponseChoiceBody(pendingContactId, remaining));
+        var body = BuildResponseChoiceBody(pendingContactId, remaining);
+        queue.UpdateBody(key, body);
+
+        // Safety net: if another message took focus, reassert the active response prompt.
+        var current = queue.Current;
+        if (!current.HasValue || current.Value.TriggerKey != key)
+        {
+            queue.Publish(new BoxMessage(
+                triggerKey: key,
+                channel: BoxChannel.Info,
+                severity: BoxSeverity.Critical,
+                sourceTag: "Operations",
+                title: "Response Choice",
+                body: body));
+        }
     }
 
     private static void ClearResponseChoicePrompt(BoxMessageQueue queue, int contactId)
@@ -1832,14 +1846,47 @@ public class UFOManager : MonoBehaviour
         if (publishEducationBulletin && !string.IsNullOrWhiteSpace(educationBody))
         {
             var bulletinStage = GetEscalationStage(outcome.Segment);
-            queue.Publish(new BoxMessage(
-                triggerKey: $"education/bulletin/ufo/{contactId}",
-                channel: BoxChannel.Info,
-                severity: BoxSeverity.Info,
-                sourceTag: "Education",
-                title: educationTitle ?? "Education Bulletin",
-                body: $"Contact #{contactId}\n\n{educationBody}\n\nEscalation: {outcome.Segment} {bulletinStage}/3 ({StageLabel(bulletinStage)})\n\nMeters: Education {Mathf.RoundToInt(education)}  |  PermitRisk {Mathf.RoundToInt(permitRisk)}{(debugShowPriorityEffectsInBoxes ? $"\n\n{BuildPriorityEffectsReadout()}" : string.Empty)}"));
+            var bulletinTitle = educationTitle ?? "Education Bulletin";
+            var bulletinBody = $"Contact #{contactId}\n\n{educationBody}\n\nEscalation: {outcome.Segment} {bulletinStage}/3 ({StageLabel(bulletinStage)})\n\nMeters: Education {Mathf.RoundToInt(education)}  |  PermitRisk {Mathf.RoundToInt(permitRisk)}{(debugShowPriorityEffectsInBoxes ? $"\n\n{BuildPriorityEffectsReadout()}" : string.Empty)}";
+
+            // Avoid stealing focus during the response handoff window.
+            if (enableResponseChoices)
+            {
+                var delay = Mathf.Max(0f, responseChoiceDelaySeconds) + 0.35f;
+                StartCoroutine(PublishEducationBulletinAfterDelay(queue, contactId, bulletinTitle, bulletinBody, delay));
+            }
+            else
+            {
+                queue.Publish(new BoxMessage(
+                    triggerKey: $"education/bulletin/ufo/{contactId}",
+                    channel: BoxChannel.Info,
+                    severity: BoxSeverity.Info,
+                    sourceTag: "Education",
+                    title: bulletinTitle,
+                    body: bulletinBody));
+            }
         }
+    }
+
+    private IEnumerator PublishEducationBulletinAfterDelay(BoxMessageQueue queue, int contactId, string title, string body, float delaySeconds)
+    {
+        if (queue == null)
+        {
+            yield break;
+        }
+
+        if (delaySeconds > 0f)
+        {
+            yield return new WaitForSecondsRealtime(delaySeconds);
+        }
+
+        queue.Publish(new BoxMessage(
+            triggerKey: $"education/bulletin/ufo/{contactId}",
+            channel: BoxChannel.Info,
+            severity: BoxSeverity.Info,
+            sourceTag: "Education",
+            title: title,
+            body: body));
     }
 
     private void ApplyMetersForOutcome((UFOSpeciesSegment Segment, UFOIntent Intent) outcome, bool publishedEducationBulletin, bool quietCargo)

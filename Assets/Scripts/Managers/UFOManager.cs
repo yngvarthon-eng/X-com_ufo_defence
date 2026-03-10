@@ -1012,6 +1012,9 @@ public class UFOManager : MonoBehaviour
             return;
         }
 
+        // Incident assessments can be critical too; explicitly yield focus to response choice.
+        queue.DismissIfCurrent($"ufo/incident/{contactId}");
+
         pendingContactId = contactId;
         pendingContactPosition = position;
         pendingContactBeganAt = Time.realtimeSinceStartup;

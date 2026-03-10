@@ -199,10 +199,10 @@ public class GameManager : MonoBehaviour
             if (keyboard.digit2Key.wasPressedThisFrame || keyboard.numpad2Key.wasPressedThisFrame) { choice = StrategicPriority.Research; return true; }
             if (keyboard.digit3Key.wasPressedThisFrame || keyboard.numpad3Key.wasPressedThisFrame) { choice = StrategicPriority.Response; return true; }
 
-            // Extra fallbacks for layouts where digit-row keys are awkward.
-            if (keyboard.f1Key.wasPressedThisFrame) { choice = StrategicPriority.Coverage; return true; }
-            if (keyboard.f2Key.wasPressedThisFrame) { choice = StrategicPriority.Research; return true; }
-            if (keyboard.f3Key.wasPressedThisFrame) { choice = StrategicPriority.Response; return true; }
+            // Extra fallbacks that do not collide with debug F1/F2/F3 box hotkeys.
+            if (keyboard.qKey.wasPressedThisFrame) { choice = StrategicPriority.Coverage; return true; }
+            if (keyboard.wKey.wasPressedThisFrame) { choice = StrategicPriority.Research; return true; }
+            if (keyboard.eKey.wasPressedThisFrame) { choice = StrategicPriority.Response; return true; }
         }
 #endif
 
@@ -210,6 +210,9 @@ public class GameManager : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.Alpha1) || Input.GetKeyDown(KeyCode.Keypad1)) { choice = StrategicPriority.Coverage; return true; }
         if (Input.GetKeyDown(KeyCode.Alpha2) || Input.GetKeyDown(KeyCode.Keypad2)) { choice = StrategicPriority.Research; return true; }
         if (Input.GetKeyDown(KeyCode.Alpha3) || Input.GetKeyDown(KeyCode.Keypad3)) { choice = StrategicPriority.Response; return true; }
+        if (Input.GetKeyDown(KeyCode.Q)) { choice = StrategicPriority.Coverage; return true; }
+        if (Input.GetKeyDown(KeyCode.W)) { choice = StrategicPriority.Research; return true; }
+        if (Input.GetKeyDown(KeyCode.E)) { choice = StrategicPriority.Response; return true; }
 #endif
 
         return false;

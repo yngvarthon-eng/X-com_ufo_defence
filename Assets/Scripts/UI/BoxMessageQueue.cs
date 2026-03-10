@@ -226,7 +226,12 @@ namespace XCon.UI.Boxes
             var incomingPriority = GetPriority(incoming);
             var currentPriority = GetPriority(current.Value);
 
-            if (incomingPriority > currentPriority)
+            var preferIncoming = incomingPriority > currentPriority
+                || (incomingPriority == currentPriority
+                    && IsResponseChoiceMessage(incoming)
+                    && !IsResponseChoiceMessage(current.Value));
+
+            if (preferIncoming)
             {
                 // Preempt: push current back into queue.
                 queue.Add(current.Value);
@@ -261,6 +266,12 @@ namespace XCon.UI.Boxes
                 if (p > bestPriority)
                 {
                     bestPriority = p;
+                    bestIndex = i;
+                }
+                else if (p == bestPriority
+                    && IsResponseChoiceMessage(queue[i])
+                    && !IsResponseChoiceMessage(queue[bestIndex]))
+                {
                     bestIndex = i;
                 }
             }
@@ -418,6 +429,12 @@ namespace XCon.UI.Boxes
             }
 
             return 200;
+        }
+
+        private static bool IsResponseChoiceMessage(BoxMessage message)
+        {
+            return !string.IsNullOrWhiteSpace(message.TriggerKey)
+                && message.TriggerKey.StartsWith("ufo/response_choice/", StringComparison.Ordinal);
         }
     }
 }

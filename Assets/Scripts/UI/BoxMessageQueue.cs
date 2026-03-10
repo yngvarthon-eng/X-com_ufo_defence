@@ -16,8 +16,9 @@ namespace XCon.UI.Boxes
         [SerializeField] private int maxDuplicateKeys = 512;
 
         [Header("Auto Dismiss")]
-        [SerializeField] private float infoAutoDismissSeconds = 3.0f;
-        [SerializeField] private float warnAutoDismissSeconds = 6.0f;
+        [SerializeField] private float infoAutoDismissSeconds = 2.5f;
+        [SerializeField] private float warnAutoDismissSeconds = 5.0f;
+        [SerializeField] private float thinkingAutoDismissSeconds = 6.0f;
 
         private readonly List<BoxMessage> queue = new();
         private readonly Dictionary<string, float> lastPublishedAtByKey = new();
@@ -364,7 +365,9 @@ namespace XCon.UI.Boxes
 
             if (message.Channel != BoxChannel.Info)
             {
-                return null;
+                return message.Channel == BoxChannel.Thinking
+                    ? thinkingAutoDismissSeconds
+                    : null;
             }
 
             return message.Severity switch

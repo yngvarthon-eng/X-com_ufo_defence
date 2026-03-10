@@ -125,6 +125,9 @@ public class UFOManager : MonoBehaviour
 
     [Header("Response")]
     [SerializeField] private bool enableResponseChoices = true;
+    [Tooltip("Delay before showing the response choice after incident assessment (seconds).")]
+    [Min(0f)]
+    [SerializeField] private float responseChoiceDelaySeconds = 2.0f;
     [Tooltip("How long the response choice stays active before it expires (seconds). 0 = never expires.")]
     [Min(0f)]
     [SerializeField] private float responseChoiceTimeoutSeconds = 20f;
@@ -341,7 +344,14 @@ public class UFOManager : MonoBehaviour
 
         PublishIncidentAssessment(queue, contactId, position, forcedOutcome: null, forcedQuietCargo: null);
 
-        PublishResponseChoice(queue, contactId, position);
+        if (responseChoiceDelaySeconds > 0f)
+        {
+            StartCoroutine(PublishResponseChoiceAfterDelay(queue, contactId, position, responseChoiceDelaySeconds));
+        }
+        else
+        {
+            PublishResponseChoice(queue, contactId, position);
+        }
 
         StartCoroutine(PublishThinking(queue));
     }
@@ -1034,6 +1044,16 @@ public class UFOManager : MonoBehaviour
             sourceTag: "Operations",
             title: "Response Choice",
                 body: BuildResponseChoiceBody(pendingContactId, initialSeconds)));
+    }
+
+    private IEnumerator PublishResponseChoiceAfterDelay(BoxMessageQueue queue, int contactId, Vector3 position, float delaySeconds)
+    {
+        if (delaySeconds > 0f)
+        {
+            yield return new WaitForSecondsRealtime(delaySeconds);
+        }
+
+        PublishResponseChoice(queue, contactId, position);
     }
 
     private void HandleResponseChoice(UFOResponseChoice choice)

@@ -1,6 +1,8 @@
 using UnityEngine;
 using XCon.UI.Boxes;
 using System.Collections;
+using UnityEngine.SceneManagement;
+using UnityEngine.UI;
 
 #if ENABLE_INPUT_SYSTEM
 using UnityEngine.InputSystem;
@@ -27,6 +29,29 @@ public class GameManager : MonoBehaviour
     private const string PickPriorityTriggerKey = "thinking/pick_priority";
     private const string WelcomeTriggerKey = "thinking/welcome_intro";
     private const string AutoLoadPriorityPrefKey = "xcon.save.autoload.priority";
+    private const string BestScorePrefKey = "xcon.mission.bestScore";
+
+    [Header("Mission")]
+    [SerializeField] private bool enableMissionEndConditions = true;
+    [Min(30f)]
+    [SerializeField] private float missionDurationSeconds = 20f * 60f;
+    [Range(10f, 100f)]
+    [SerializeField] private float permitRiskFailThreshold = 100f;
+    [SerializeField] private bool pauseGameWhenMissionEnds = true;
+
+    private float missionElapsedSeconds;
+    private bool missionEnded;
+    private GameObject missionEndPanel;
+    private UFOManager cachedUfoManager;
+    private int bestScore;
+    private Text missionHudLabel;
+    private GameObject missionHudPanel;
+
+    private enum MissionEndReason
+    {
+        Victory,
+        PermitRiskFailure,
+    }
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
     private static void EnsureExists()
@@ -106,6 +131,8 @@ public class GameManager : MonoBehaviour
             gameObject.AddComponent<UFOManager>();
         }
 
+        cachedUfoManager = GetComponent<UFOManager>();
+
         // Ensure response-related managers exist.
         if (GetComponent<SquadManager>() == null)
         {
@@ -123,6 +150,10 @@ public class GameManager : MonoBehaviour
         }
 
         TryApplyAutoLoadedPriority();
+
+        bestScore = PlayerPrefs.GetInt(BestScorePrefKey, 0);
+        BuildMissionHud();
+        RefreshMissionHud();
 
         StartCoroutine(PublishStartupWelcomePrompt());
     }
@@ -188,6 +219,14 @@ public class GameManager : MonoBehaviour
 
     private void Update()
     {
+        TickMissionState();
+        RefreshMissionHud();
+
+        if (missionEnded)
+        {
+            return;
+        }
+
         var queue = BoxMessageQueue.Instance;
         if (queue == null)
         {
@@ -260,5 +299,306 @@ public class GameManager : MonoBehaviour
 #endif
 
         return false;
+    }
+
+    private void TickMissionState()
+    {
+        if (!enableMissionEndConditions || missionEnded)
+        {
+            return;
+        }
+
+        if (!GameMenuController.IsPaused)
+        {
+            missionElapsedSeconds += Time.unscaledDeltaTime;
+        }
+
+        var ufo = cachedUfoManager != null ? cachedUfoManager : GetComponent<UFOManager>();
+        cachedUfoManager = ufo;
+        if (ufo != null && ufo.PermitRisk >= permitRiskFailThreshold)
+        {
+            EndMission(MissionEndReason.PermitRiskFailure, ufo);
+            return;
+        }
+
+        if (missionElapsedSeconds >= missionDurationSeconds)
+        {
+            EndMission(MissionEndReason.Victory, ufo);
+        }
+    }
+
+    private void EndMission(MissionEndReason reason, UFOManager ufo)
+    {
+        if (missionEnded)
+        {
+            return;
+        }
+
+        missionEnded = true;
+
+        if (pauseGameWhenMissionEnds)
+        {
+            GameMenuController.SetPaused(true);
+        }
+
+        var score = CalculateMissionScore(ufo);
+        var isNewBest = score > bestScore;
+        if (isNewBest)
+        {
+            bestScore = score;
+            PlayerPrefs.SetInt(BestScorePrefKey, bestScore);
+            PlayerPrefs.Save();
+        }
+
+        if (missionHudPanel != null)
+        {
+            missionHudPanel.SetActive(false);
+        }
+
+        ShowMissionEndPanel(reason, ufo, score, bestScore, isNewBest);
+    }
+
+    private void BuildMissionHud()
+    {
+        if (!enableMissionEndConditions || missionHudLabel != null)
+        {
+            return;
+        }
+
+        var canvasGo = new GameObject("MissionHudCanvas", typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
+        canvasGo.transform.SetParent(transform, false);
+
+        var canvas = canvasGo.GetComponent<Canvas>();
+        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        canvas.sortingOrder = 1000;
+
+        var scaler = canvasGo.GetComponent<CanvasScaler>();
+        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        scaler.referenceResolution = new Vector2(1920, 1080);
+
+        missionHudPanel = new GameObject("MissionHudPanel", typeof(Image));
+        missionHudPanel.transform.SetParent(canvasGo.transform, false);
+
+        var panelImage = missionHudPanel.GetComponent<Image>();
+        panelImage.color = new Color(0f, 0f, 0f, 0.58f);
+
+        var panelRect = missionHudPanel.GetComponent<RectTransform>();
+        panelRect.anchorMin = new Vector2(0f, 1f);
+        panelRect.anchorMax = new Vector2(0f, 1f);
+        panelRect.pivot = new Vector2(0f, 1f);
+        panelRect.anchoredPosition = new Vector2(20f, -20f);
+        panelRect.sizeDelta = new Vector2(380f, 138f);
+
+        var labelGo = new GameObject("MissionHudLabel", typeof(Text));
+        labelGo.transform.SetParent(missionHudPanel.transform, false);
+
+        var labelRect = labelGo.GetComponent<RectTransform>();
+        labelRect.anchorMin = Vector2.zero;
+        labelRect.anchorMax = Vector2.one;
+        labelRect.offsetMin = new Vector2(12f, 8f);
+        labelRect.offsetMax = new Vector2(-12f, -8f);
+
+        missionHudLabel = labelGo.GetComponent<Text>();
+        var font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf") ?? Resources.GetBuiltinResource<Font>("Arial.ttf");
+        missionHudLabel.font = font;
+        missionHudLabel.fontSize = 19;
+        missionHudLabel.alignment = TextAnchor.UpperLeft;
+        missionHudLabel.horizontalOverflow = HorizontalWrapMode.Wrap;
+        missionHudLabel.verticalOverflow = VerticalWrapMode.Overflow;
+        missionHudLabel.color = Color.white;
+    }
+
+    private void RefreshMissionHud()
+    {
+        if (!enableMissionEndConditions || missionHudLabel == null || missionEnded)
+        {
+            return;
+        }
+
+        var ufo = cachedUfoManager != null ? cachedUfoManager : GetComponent<UFOManager>();
+        cachedUfoManager = ufo;
+
+        var score = CalculateMissionScore(ufo);
+        var timeRemaining = Mathf.Max(0f, missionDurationSeconds - missionElapsedSeconds);
+        var totalSeconds = Mathf.CeilToInt(timeRemaining);
+        var minutes = totalSeconds / 60;
+        var seconds = totalSeconds % 60;
+
+        if (ufo == null)
+        {
+            missionHudLabel.text =
+                $"MISSION\n" +
+                $"Time Left: {minutes}:{seconds:00}\n" +
+                $"Score: {score}  Best: {bestScore}\n" +
+                $"Priority: {currentPriority}";
+            return;
+        }
+
+        var pausedSuffix = GameMenuController.IsPaused ? "  [PAUSED]" : string.Empty;
+        missionHudLabel.text =
+            $"MISSION{pausedSuffix}\n" +
+            $"Time Left: {minutes}:{seconds:00}  Score: {score}\n" +
+            $"Best: {bestScore}  Priority: {currentPriority}\n" +
+            $"Contacts: {ufo.TotalContactsSpawned}  Responses: {ufo.RespondedContactsCount}  Missed: {ufo.ExpiredResponsesCount}\n" +
+            $"Education: {Mathf.RoundToInt(ufo.Education)}  PermitRisk: {Mathf.RoundToInt(ufo.PermitRisk)}";
+    }
+
+    private int CalculateMissionScore(UFOManager ufo)
+    {
+        if (ufo == null)
+        {
+            var fallbackTime = Mathf.RoundToInt(missionElapsedSeconds * 0.8f);
+            return Mathf.Max(0, fallbackTime);
+        }
+
+        var baseScore = ufo.RespondedContactsCount * 150;
+        var contactCoverage = ufo.TotalContactsSpawned * 25;
+        var educationScore = Mathf.RoundToInt(ufo.Education * 12f);
+        var missPenalty = ufo.ExpiredResponsesCount * 90;
+        var riskPenalty = Mathf.RoundToInt(ufo.PermitRisk * 9f);
+        var survivalBonus = Mathf.RoundToInt(Mathf.Min(missionElapsedSeconds, missionDurationSeconds));
+
+        return Mathf.Max(0, baseScore + contactCoverage + educationScore + survivalBonus - missPenalty - riskPenalty);
+    }
+
+    private void ShowMissionEndPanel(MissionEndReason reason, UFOManager ufo, int score, int bestScore, bool isNewBest)
+    {
+        if (missionEndPanel != null)
+        {
+            Destroy(missionEndPanel);
+            missionEndPanel = null;
+        }
+
+        var canvasGo = new GameObject("MissionEndCanvas", typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
+        canvasGo.transform.SetParent(transform, false);
+
+        var canvas = canvasGo.GetComponent<Canvas>();
+        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        canvas.sortingOrder = 2000;
+
+        var scaler = canvasGo.GetComponent<CanvasScaler>();
+        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        scaler.referenceResolution = new Vector2(1920, 1080);
+
+        missionEndPanel = new GameObject("MissionEndPanel", typeof(Image));
+        missionEndPanel.transform.SetParent(canvasGo.transform, false);
+
+        var panelImage = missionEndPanel.GetComponent<Image>();
+        panelImage.color = new Color(0f, 0f, 0f, 0.86f);
+
+        var panelRect = missionEndPanel.GetComponent<RectTransform>();
+        panelRect.anchorMin = new Vector2(0.5f, 0.5f);
+        panelRect.anchorMax = new Vector2(0.5f, 0.5f);
+        panelRect.pivot = new Vector2(0.5f, 0.5f);
+        panelRect.anchoredPosition = Vector2.zero;
+        panelRect.sizeDelta = new Vector2(560f, 380f);
+
+        var heading = CreatePanelLabel(missionEndPanel.transform, "Heading", reason == MissionEndReason.Victory ? "Mission Complete" : "Mission Failed", 34, new Vector2(0f, -44f));
+        heading.alignment = TextAnchor.MiddleCenter;
+
+        var summary = BuildMissionSummary(reason, ufo, score, bestScore, isNewBest);
+        var summaryLabel = CreatePanelLabel(missionEndPanel.transform, "Summary", summary, 20, new Vector2(0f, -178f));
+        summaryLabel.alignment = TextAnchor.UpperCenter;
+
+        var retryButton = CreatePanelButton(missionEndPanel.transform, "RetryButton", "Retry", new Vector2(-95f, -322f), new Vector2(170f, 46f));
+        retryButton.onClick.AddListener(RetryMission);
+
+        var quitButton = CreatePanelButton(missionEndPanel.transform, "QuitButton", "Quit", new Vector2(95f, -322f), new Vector2(170f, 46f));
+        quitButton.onClick.AddListener(QuitMission);
+    }
+
+    private string BuildMissionSummary(MissionEndReason reason, UFOManager ufo, int score, int bestScore, bool isNewBest)
+    {
+        var elapsed = Mathf.Max(0, Mathf.FloorToInt(missionElapsedSeconds));
+        var elapsedMinutes = elapsed / 60;
+        var elapsedSecondsPart = elapsed % 60;
+
+        var resultLine = reason == MissionEndReason.Victory
+            ? "You held the line until mission timer elapsed."
+            : "Permit risk exceeded acceptable limits.";
+
+        if (ufo == null)
+        {
+            return $"{resultLine}\n\nTime: {elapsedMinutes}:{elapsedSecondsPart:00}\nScore: {score}\nBest: {bestScore}";
+        }
+
+        var bestSuffix = isNewBest ? " (NEW)" : string.Empty;
+        return $"{resultLine}\n\nTime: {elapsedMinutes}:{elapsedSecondsPart:00}\nContacts: {ufo.TotalContactsSpawned}\nResponses: {ufo.RespondedContactsCount}\nMissed: {ufo.ExpiredResponsesCount}\nEducation: {Mathf.RoundToInt(ufo.Education)}\nPermitRisk: {Mathf.RoundToInt(ufo.PermitRisk)}\n\nScore: {score}\nBest: {bestScore}{bestSuffix}";
+    }
+
+    private static Text CreatePanelLabel(Transform parent, string name, string content, int fontSize, Vector2 anchoredPosition)
+    {
+        var go = new GameObject(name, typeof(Text));
+        go.transform.SetParent(parent, false);
+
+        var rect = go.GetComponent<RectTransform>();
+        rect.anchorMin = new Vector2(0.5f, 1f);
+        rect.anchorMax = new Vector2(0.5f, 1f);
+        rect.pivot = new Vector2(0.5f, 1f);
+        rect.anchoredPosition = anchoredPosition;
+        rect.sizeDelta = new Vector2(500f, 220f);
+
+        var text = go.GetComponent<Text>();
+        var font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf") ?? Resources.GetBuiltinResource<Font>("Arial.ttf");
+        text.font = font;
+        text.fontSize = fontSize;
+        text.alignment = TextAnchor.UpperCenter;
+        text.color = Color.white;
+        text.horizontalOverflow = HorizontalWrapMode.Wrap;
+        text.verticalOverflow = VerticalWrapMode.Overflow;
+        text.text = content;
+        return text;
+    }
+
+    private static Button CreatePanelButton(Transform parent, string name, string label, Vector2 anchoredPosition, Vector2 size)
+    {
+        var go = new GameObject(name, typeof(Image), typeof(Button));
+        go.transform.SetParent(parent, false);
+
+        var rect = go.GetComponent<RectTransform>();
+        rect.anchorMin = new Vector2(0.5f, 1f);
+        rect.anchorMax = new Vector2(0.5f, 1f);
+        rect.pivot = new Vector2(0.5f, 1f);
+        rect.anchoredPosition = anchoredPosition;
+        rect.sizeDelta = size;
+
+        var image = go.GetComponent<Image>();
+        image.color = new Color(1f, 1f, 1f, 0.92f);
+
+        var button = go.GetComponent<Button>();
+
+        var labelGo = new GameObject("Label", typeof(Text));
+        labelGo.transform.SetParent(go.transform, false);
+
+        var labelRect = labelGo.GetComponent<RectTransform>();
+        labelRect.anchorMin = Vector2.zero;
+        labelRect.anchorMax = Vector2.one;
+        labelRect.offsetMin = Vector2.zero;
+        labelRect.offsetMax = Vector2.zero;
+
+        var text = labelGo.GetComponent<Text>();
+        var font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf") ?? Resources.GetBuiltinResource<Font>("Arial.ttf");
+        text.font = font;
+        text.fontSize = 24;
+        text.alignment = TextAnchor.MiddleCenter;
+        text.color = new Color(0.12f, 0.12f, 0.12f, 1f);
+        text.text = label;
+
+        return button;
+    }
+
+    private static void RetryMission()
+    {
+        GameMenuController.SetPaused(false);
+        SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+    }
+
+    private static void QuitMission()
+    {
+#if UNITY_EDITOR
+        UnityEditor.EditorApplication.isPlaying = false;
+#else
+        Application.Quit();
+#endif
     }
 }

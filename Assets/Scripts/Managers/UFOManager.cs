@@ -231,6 +231,14 @@ public class UFOManager : MonoBehaviour
     private int pendingLastCountdownSeconds = -1;
 
     private float nextAutoSpawnAt;
+    private int respondedContactsCount;
+    private int expiredResponsesCount;
+
+    public float Education => education;
+    public float PermitRisk => permitRisk;
+    public int TotalContactsSpawned => nextContactId;
+    public int RespondedContactsCount => respondedContactsCount;
+    public int ExpiredResponsesCount => expiredResponsesCount;
 
     private struct ContactRecord
     {
@@ -1191,6 +1199,7 @@ public class UFOManager : MonoBehaviour
 
         hasPendingResponse = false;
         pendingLastCountdownSeconds = -1;
+        expiredResponsesCount++;
 
         var queue = BoxMessageQueue.Instance != null ? BoxMessageQueue.Instance : UnityEngine.Object.FindAnyObjectByType<BoxMessageQueue>();
         if (queue == null)
@@ -1311,6 +1320,11 @@ public class UFOManager : MonoBehaviour
         if (!contactRecordsById.TryGetValue(contactId, out var record))
         {
             return;
+        }
+
+        if (!record.HasResponse)
+        {
+            respondedContactsCount++;
         }
 
         record.HasResponse = true;

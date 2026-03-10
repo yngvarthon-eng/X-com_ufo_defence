@@ -41,6 +41,14 @@ public class WorldMapBackgroundManager : MonoBehaviour
 
     [SerializeField] private AspectRatioFitter.AspectMode aspectMode = AspectRatioFitter.AspectMode.FitInParent;
 
+    [Header("Coverage")]
+    [Tooltip("If enabled, map backgrounds are normalized to fill the viewport similarly across map styles (may crop edges).")]
+    [SerializeField] private bool normalizeMapCoverage = true;
+
+    [Tooltip("Uniform zoom applied after normalization. Increase slightly if maps still look too small.")]
+    [Range(0.8f, 1.4f)]
+    [SerializeField] private float normalizedCoverageZoom = 1.02f;
+
     private Dictionary<int, Sprite> mapOptions;
     private Coroutine fadeTransitionCoroutine;
     private int currentMapIndex = -1;
@@ -125,6 +133,7 @@ public class WorldMapBackgroundManager : MonoBehaviour
 
     private void OnValidate()
     {
+        normalizedCoverageZoom = Mathf.Clamp(normalizedCoverageZoom, 0.8f, 1.4f);
         ApplyLayoutSettings();
     }
 
@@ -212,7 +221,9 @@ public class WorldMapBackgroundManager : MonoBehaviour
                 aspectRatioFitter = backgroundImage.gameObject.AddComponent<AspectRatioFitter>();
             }
 
-            aspectRatioFitter.aspectMode = aspectMode;
+            aspectRatioFitter.aspectMode = normalizeMapCoverage
+                ? AspectRatioFitter.AspectMode.EnvelopeParent
+                : aspectMode;
         }
         else
         {
@@ -222,6 +233,8 @@ public class WorldMapBackgroundManager : MonoBehaviour
                 aspectRatioFitter.enabled = false;
             }
         }
+
+        ApplyCoverageNormalization();
     }
 
     private void ResolveReferences()
@@ -424,8 +437,40 @@ public class WorldMapBackgroundManager : MonoBehaviour
         }
 
         aspectRatioFitter.enabled = true;
-        aspectRatioFitter.aspectMode = aspectMode;
+        aspectRatioFitter.aspectMode = normalizeMapCoverage
+            ? AspectRatioFitter.AspectMode.EnvelopeParent
+            : aspectMode;
         aspectRatioFitter.aspectRatio = rect.width / rect.height;
+
+        ApplyCoverageNormalization();
+    }
+
+    private void ApplyCoverageNormalization()
+    {
+        if (backgroundImage == null)
+        {
+            return;
+        }
+
+        var rect = backgroundImage.rectTransform;
+        if (rect == null)
+        {
+            return;
+        }
+
+        if (!normalizeMapCoverage)
+        {
+            rect.localScale = Vector3.one;
+            return;
+        }
+
+        rect.anchorMin = Vector2.zero;
+        rect.anchorMax = Vector2.one;
+        rect.pivot = new Vector2(0.5f, 0.5f);
+        rect.offsetMin = Vector2.zero;
+        rect.offsetMax = Vector2.zero;
+        rect.anchoredPosition = Vector2.zero;
+        rect.localScale = Vector3.one * normalizedCoverageZoom;
     }
 
     private IEnumerator FadeToSprite(Sprite nextSprite)

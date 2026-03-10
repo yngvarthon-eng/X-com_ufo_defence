@@ -6,6 +6,22 @@ using UnityEngine;
 public class ProceduralAudioCuePlayer : MonoBehaviour
 {
     private const int SampleRate = 44100;
+    private const string SfxVolumePrefKey = "xcon.audio.sfxVolume";
+
+    [Header("Curated Clips (Optional)")]
+    [SerializeField] private AudioClip ufoDetectedClip;
+    [SerializeField] private AudioClip responseAcceptedClip;
+    [SerializeField] private AudioClip responseExpiredClip;
+    [SerializeField] private AudioClip missionVictoryClip;
+    [SerializeField] private AudioClip missionFailureClip;
+    [SerializeField] private AudioClip medalBronzeClip;
+    [SerializeField] private AudioClip medalSilverClip;
+    [SerializeField] private AudioClip medalGoldClip;
+    [SerializeField] private AudioClip medalNoneClip;
+
+    [Header("SFX")]
+    [Range(0f, 1f)]
+    [SerializeField] private float defaultSfxVolume = 0.22f;
 
     private readonly Dictionary<string, AudioClip> clipCache = new();
     private AudioSource audioSource;
@@ -16,31 +32,62 @@ public class ProceduralAudioCuePlayer : MonoBehaviour
         audioSource.playOnAwake = false;
         audioSource.loop = false;
         audioSource.spatialBlend = 0f;
-        audioSource.volume = 0.22f;
+        var stored = PlayerPrefs.GetFloat(SfxVolumePrefKey, defaultSfxVolume);
+        SetSfxVolume(stored, persist: false);
+    }
+
+    private void OnValidate()
+    {
+        defaultSfxVolume = Mathf.Clamp01(defaultSfxVolume);
     }
 
     public void PlayUfoDetected()
     {
+        if (PlayCuratedClip(ufoDetectedClip, 1f))
+        {
+            return;
+        }
+
         PlayOneShot("ufo.detected", 720f, 0.14f, 0.24f, Wave.Sine);
     }
 
     public void PlayResponseAccepted()
     {
+        if (PlayCuratedClip(responseAcceptedClip, 1f))
+        {
+            return;
+        }
+
         PlayOneShot("response.accepted", 860f, 0.09f, 0.28f, Wave.Sine);
     }
 
     public void PlayResponseExpired()
     {
+        if (PlayCuratedClip(responseExpiredClip, 1f))
+        {
+            return;
+        }
+
         PlayOneShot("response.expired", 230f, 0.18f, 0.3f, Wave.Square);
     }
 
     public void PlayMissionVictory()
     {
+        if (PlayCuratedClip(missionVictoryClip, 1f))
+        {
+            return;
+        }
+
         StartCoroutine(PlaySequence(new[] { 523.25f, 659.25f, 783.99f }, 0.1f, 0.08f, 0.28f));
     }
 
     public void PlayMissionFailure()
     {
+        if (PlayCuratedClip(missionFailureClip, 1f))
+        {
+            return;
+        }
+
         StartCoroutine(PlaySequence(new[] { 320f, 260f, 210f }, 0.12f, 0.09f, 0.3f));
     }
 
@@ -49,18 +96,72 @@ public class ProceduralAudioCuePlayer : MonoBehaviour
         switch (medalTier)
         {
             case 3:
+                if (PlayCuratedClip(medalGoldClip, 1f))
+                {
+                    return;
+                }
                 StartCoroutine(PlaySequence(new[] { 740f, 932f, 1175f }, 0.08f, 0.06f, 0.25f));
                 break;
             case 2:
+                if (PlayCuratedClip(medalSilverClip, 1f))
+                {
+                    return;
+                }
                 StartCoroutine(PlaySequence(new[] { 660f, 830f }, 0.08f, 0.06f, 0.24f));
                 break;
             case 1:
+                if (PlayCuratedClip(medalBronzeClip, 1f))
+                {
+                    return;
+                }
                 StartCoroutine(PlaySequence(new[] { 580f, 690f }, 0.07f, 0.05f, 0.2f));
                 break;
             default:
+                if (PlayCuratedClip(medalNoneClip, 1f))
+                {
+                    return;
+                }
                 PlayOneShot("medal.none", 430f, 0.08f, 0.18f, Wave.Sine);
                 break;
         }
+    }
+
+    public void SetSfxVolume(float volume, bool persist = true)
+    {
+        var clamped = Mathf.Clamp01(volume);
+        if (audioSource != null)
+        {
+            audioSource.volume = clamped;
+        }
+
+        if (!persist)
+        {
+            return;
+        }
+
+        PlayerPrefs.SetFloat(SfxVolumePrefKey, clamped);
+        PlayerPrefs.Save();
+    }
+
+    public float GetSfxVolume()
+    {
+        if (audioSource != null)
+        {
+            return audioSource.volume;
+        }
+
+        return PlayerPrefs.GetFloat(SfxVolumePrefKey, defaultSfxVolume);
+    }
+
+    private bool PlayCuratedClip(AudioClip clip, float volumeScale)
+    {
+        if (audioSource == null || clip == null)
+        {
+            return false;
+        }
+
+        audioSource.PlayOneShot(clip, Mathf.Clamp01(volumeScale));
+        return true;
     }
 
     private IEnumerator PlaySequence(IReadOnlyList<float> frequencies, float duration, float gapSeconds, float volume)

@@ -37,6 +37,8 @@ public class GameMenuController : MonoBehaviour
     private RectTransform menuPanelRect;
     private RectTransform menuToggleRect;
     private InputField commanderNameInput;
+    private Slider sfxVolumeSlider;
+    private Text sfxVolumeValueLabel;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     private static void ResetPauseStateOnSubsystemRegistration()
@@ -102,7 +104,7 @@ public class GameMenuController : MonoBehaviour
         menuPanelRect.anchorMax = new Vector2(1f, 1f);
         menuPanelRect.pivot = new Vector2(1f, 1f);
         menuPanelRect.anchoredPosition = new Vector2(-20f, -70f);
-        menuPanelRect.sizeDelta = new Vector2(320f, 332f);
+        menuPanelRect.sizeDelta = new Vector2(320f, 402f);
 
         CreateTextLabel(menuPanel.transform, "CommanderLabel", "Commander Name", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -22f), new Vector2(260f, 24f), 16);
 
@@ -112,16 +114,25 @@ public class GameMenuController : MonoBehaviour
         var applyNameButton = CreateButton(menuPanel.transform, "ApplyCommanderNameButton", "Apply Name", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -94f), new Vector2(260f, 36f));
         applyNameButton.onClick.AddListener(ApplyCommanderNameFromInput);
 
-        var newGameButton = CreateButton(menuPanel.transform, "NewGameButton", "New Game", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -140f), new Vector2(260f, 40f));
+        CreateTextLabel(menuPanel.transform, "SfxLabel", "SFX Volume", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -130f), new Vector2(260f, 22f), 16);
+        sfxVolumeSlider = CreateSlider(menuPanel.transform, "SfxVolumeSlider", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -154f), new Vector2(190f, 22f));
+        sfxVolumeSlider.onValueChanged.AddListener(OnSfxVolumeChanged);
+
+        sfxVolumeValueLabel = CreateTextLabel(menuPanel.transform, "SfxValueLabel", "100%", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(112f, -154f), new Vector2(66f, 22f), 14);
+        sfxVolumeValueLabel.alignment = TextAnchor.MiddleRight;
+
+        SyncAudioControlsFromState();
+
+        var newGameButton = CreateButton(menuPanel.transform, "NewGameButton", "New Game", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -194f), new Vector2(260f, 40f));
         newGameButton.onClick.AddListener(NewGame);
 
-        var loadButton = CreateButton(menuPanel.transform, "LoadButton", "Load", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -186f), new Vector2(260f, 40f));
+        var loadButton = CreateButton(menuPanel.transform, "LoadButton", "Load", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -240f), new Vector2(260f, 40f));
         loadButton.onClick.AddListener(LoadGame);
 
-        var saveButton = CreateButton(menuPanel.transform, "SaveButton", "Save", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -232f), new Vector2(260f, 40f));
+        var saveButton = CreateButton(menuPanel.transform, "SaveButton", "Save", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -286f), new Vector2(260f, 40f));
         saveButton.onClick.AddListener(SaveGame);
 
-        var quitButton = CreateButton(menuPanel.transform, "QuitButton", "Quit", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -278f), new Vector2(260f, 40f));
+        var quitButton = CreateButton(menuPanel.transform, "QuitButton", "Quit", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -332f), new Vector2(260f, 40f));
         quitButton.onClick.AddListener(QuitGame);
 
         menuPanel.SetActive(false);
@@ -237,6 +248,73 @@ public class GameMenuController : MonoBehaviour
         input.lineType = InputField.LineType.SingleLine;
 
         return input;
+    }
+
+    private static Slider CreateSlider(Transform parent, string objectName, Vector2 anchorMin, Vector2 anchorMax, Vector2 anchoredPosition, Vector2 size)
+    {
+        var go = new GameObject(objectName, typeof(RectTransform), typeof(Slider));
+        go.transform.SetParent(parent, false);
+
+        var rect = go.GetComponent<RectTransform>();
+        rect.anchorMin = anchorMin;
+        rect.anchorMax = anchorMax;
+        rect.pivot = new Vector2(0.5f, 0.5f);
+        rect.anchoredPosition = anchoredPosition;
+        rect.sizeDelta = size;
+
+        var backgroundGo = new GameObject("Background", typeof(Image));
+        backgroundGo.transform.SetParent(go.transform, false);
+        var backgroundRect = backgroundGo.GetComponent<RectTransform>();
+        backgroundRect.anchorMin = new Vector2(0f, 0.25f);
+        backgroundRect.anchorMax = new Vector2(1f, 0.75f);
+        backgroundRect.offsetMin = Vector2.zero;
+        backgroundRect.offsetMax = Vector2.zero;
+        var backgroundImage = backgroundGo.GetComponent<Image>();
+        backgroundImage.color = new Color(0.18f, 0.18f, 0.18f, 0.95f);
+
+        var fillAreaGo = new GameObject("Fill Area", typeof(RectTransform));
+        fillAreaGo.transform.SetParent(go.transform, false);
+        var fillAreaRect = fillAreaGo.GetComponent<RectTransform>();
+        fillAreaRect.anchorMin = new Vector2(0f, 0f);
+        fillAreaRect.anchorMax = new Vector2(1f, 1f);
+        fillAreaRect.offsetMin = new Vector2(8f, 0f);
+        fillAreaRect.offsetMax = new Vector2(-14f, 0f);
+
+        var fillGo = new GameObject("Fill", typeof(Image));
+        fillGo.transform.SetParent(fillAreaGo.transform, false);
+        var fillRect = fillGo.GetComponent<RectTransform>();
+        fillRect.anchorMin = new Vector2(0f, 0f);
+        fillRect.anchorMax = new Vector2(1f, 1f);
+        fillRect.offsetMin = Vector2.zero;
+        fillRect.offsetMax = Vector2.zero;
+        var fillImage = fillGo.GetComponent<Image>();
+        fillImage.color = new Color(0.43f, 0.79f, 1f, 1f);
+
+        var handleAreaGo = new GameObject("Handle Slide Area", typeof(RectTransform));
+        handleAreaGo.transform.SetParent(go.transform, false);
+        var handleAreaRect = handleAreaGo.GetComponent<RectTransform>();
+        handleAreaRect.anchorMin = new Vector2(0f, 0f);
+        handleAreaRect.anchorMax = new Vector2(1f, 1f);
+        handleAreaRect.offsetMin = new Vector2(8f, 0f);
+        handleAreaRect.offsetMax = new Vector2(-8f, 0f);
+
+        var handleGo = new GameObject("Handle", typeof(Image));
+        handleGo.transform.SetParent(handleAreaGo.transform, false);
+        var handleRect = handleGo.GetComponent<RectTransform>();
+        handleRect.sizeDelta = new Vector2(12f, 24f);
+        var handleImage = handleGo.GetComponent<Image>();
+        handleImage.color = new Color(0.96f, 0.96f, 0.96f, 1f);
+
+        var slider = go.GetComponent<Slider>();
+        slider.fillRect = fillRect;
+        slider.handleRect = handleRect;
+        slider.targetGraphic = handleImage;
+        slider.direction = Slider.Direction.LeftToRight;
+        slider.minValue = 0f;
+        slider.maxValue = 1f;
+        slider.wholeNumbers = false;
+
+        return slider;
     }
 
     private void ToggleMenuPanel()
@@ -362,6 +440,7 @@ public class GameMenuController : MonoBehaviour
         if (visible)
         {
             SyncCommanderInputFromState();
+            SyncAudioControlsFromState();
             menuForcedPause = !IsPaused;
             if (menuForcedPause)
             {
@@ -565,5 +644,44 @@ public class GameMenuController : MonoBehaviour
         manager.SetCommanderName(nextName, persist: true);
         SyncCommanderInputFromState();
         ShowStatusToast($"Commander: {manager.CommanderName}");
+    }
+
+    private void SyncAudioControlsFromState()
+    {
+        if (sfxVolumeSlider == null)
+        {
+            return;
+        }
+
+        var cuePlayer = UnityEngine.Object.FindAnyObjectByType<ProceduralAudioCuePlayer>();
+        var volume = cuePlayer != null ? cuePlayer.GetSfxVolume() : PlayerPrefs.GetFloat("xcon.audio.sfxVolume", 0.22f);
+        sfxVolumeSlider.SetValueWithoutNotify(Mathf.Clamp01(volume));
+        UpdateSfxVolumeLabel(volume);
+    }
+
+    private void OnSfxVolumeChanged(float value)
+    {
+        var cuePlayer = UnityEngine.Object.FindAnyObjectByType<ProceduralAudioCuePlayer>();
+        if (cuePlayer != null)
+        {
+            cuePlayer.SetSfxVolume(value, persist: true);
+        }
+        else
+        {
+            PlayerPrefs.SetFloat("xcon.audio.sfxVolume", Mathf.Clamp01(value));
+            PlayerPrefs.Save();
+        }
+
+        UpdateSfxVolumeLabel(value);
+    }
+
+    private void UpdateSfxVolumeLabel(float value)
+    {
+        if (sfxVolumeValueLabel == null)
+        {
+            return;
+        }
+
+        sfxVolumeValueLabel.text = $"{Mathf.RoundToInt(Mathf.Clamp01(value) * 100f)}%";
     }
 }

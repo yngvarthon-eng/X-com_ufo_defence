@@ -161,13 +161,7 @@ public class GameManager : MonoBehaviour
     private void Update()
     {
         var queue = BoxMessageQueue.Instance;
-        if (queue == null || !queue.Current.HasValue)
-        {
-            return;
-        }
-
-        var current = queue.Current.Value;
-        if (current.TriggerKey != PickPriorityTriggerKey)
+        if (queue == null)
         {
             return;
         }
@@ -179,9 +173,18 @@ public class GameManager : MonoBehaviour
 
         currentPriority = choice;
 
-        // Keep the prompt visible and update it so you can re-choose.
-        queue.UpdateBody(PickPriorityTriggerKey,
-            $"Strategic Priority (press 1-3 anytime):\n1) Coverage\n2) Research\n3) Response\n\nCurrent: {choice}\n\nTip: Use 1-4 on active contact prompts to choose response.");
+        var body = $"Strategic Priority (press 1-3 anytime):\n1) Coverage\n2) Research\n3) Response\n\nCurrent: {choice}\n\nTip: Use 1-4 on active contact prompts to choose response.";
+
+        // Ensure feedback appears even if another message was active.
+        queue.Publish(new BoxMessage(
+            triggerKey: PickPriorityTriggerKey,
+            channel: BoxChannel.Thinking,
+            severity: BoxSeverity.Info,
+            sourceTag: "Commander",
+            title: "Strategic Priority Updated",
+            body: body));
+
+        queue.UpdateBody(PickPriorityTriggerKey, body);
     }
 
     private static bool TryGetPriorityChoice(out StrategicPriority choice)
@@ -195,6 +198,11 @@ public class GameManager : MonoBehaviour
             if (keyboard.digit1Key.wasPressedThisFrame || keyboard.numpad1Key.wasPressedThisFrame) { choice = StrategicPriority.Coverage; return true; }
             if (keyboard.digit2Key.wasPressedThisFrame || keyboard.numpad2Key.wasPressedThisFrame) { choice = StrategicPriority.Research; return true; }
             if (keyboard.digit3Key.wasPressedThisFrame || keyboard.numpad3Key.wasPressedThisFrame) { choice = StrategicPriority.Response; return true; }
+
+            // Extra fallbacks for layouts where digit-row keys are awkward.
+            if (keyboard.f1Key.wasPressedThisFrame) { choice = StrategicPriority.Coverage; return true; }
+            if (keyboard.f2Key.wasPressedThisFrame) { choice = StrategicPriority.Research; return true; }
+            if (keyboard.f3Key.wasPressedThisFrame) { choice = StrategicPriority.Response; return true; }
         }
 #endif
 

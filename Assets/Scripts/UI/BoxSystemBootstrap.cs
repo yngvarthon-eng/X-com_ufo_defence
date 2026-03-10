@@ -108,7 +108,7 @@ namespace XCon.UI.Boxes
             bodyText.color = new Color(1f, 1f, 1f, 0.95f);
             bodyText.horizontalOverflow = HorizontalWrapMode.Wrap;
             bodyText.verticalOverflow = VerticalWrapMode.Truncate;
-            SetRect(bodyGo.GetComponent<RectTransform>(), new Vector2(0.03f, 0.14f), new Vector2(0.97f, 0.72f));
+            SetRect(bodyGo.GetComponent<RectTransform>(), new Vector2(0.03f, 0.14f), new Vector2(0.97f, 0.56f));
 
             var queueGo = CreateText("Queue", panel.transform, fontSize: 12, fontStyle: FontStyle.Normal);
             queueText = queueGo.GetComponent<Text>();

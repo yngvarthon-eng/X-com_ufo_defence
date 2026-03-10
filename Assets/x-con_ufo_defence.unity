@@ -2079,6 +2079,8 @@ MonoBehaviour:
   publishUfoSpottedBoxes: 1
   thinkingDelaySeconds: 0.25
   ufoPrefab: {fileID: 8076927377013852735, guid: 28714324fd0a911dc831c57ee0de9381, type: 3}
+  smugglerUfoPrefab: {fileID: 3872852037961982655, guid: 9cb1b085a5cb13589997f5707e6c67f2, type: 3}
+  useSmugglerPrefabAsDefaultVisual: 1
   spawnUfoVisuals: 1
   ufoVisualSpawnYOffset: 0
   destroyUfoVisualOnIntercept: 1

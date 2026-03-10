@@ -3,6 +3,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using XCon.UI.Boxes;
+using UnityEngine.UI;
 
 using Object = UnityEngine.Object;
 
@@ -20,11 +21,24 @@ public class UFOManager : MonoBehaviour
     [Tooltip("Optional prefab spawned at the contact position when a UFO is detected.")]
     [SerializeField] private GameObject ufoPrefab;
 
+    [Tooltip("Optional specialized visual used for smuggler-themed craft.")]
+    [SerializeField] private GameObject smugglerUfoPrefab;
+
+    [Tooltip("If true and a smuggler prefab is assigned, use it as the default spawned visual.")]
+    [SerializeField] private bool useSmugglerPrefabAsDefaultVisual = true;
+
     [Tooltip("If true and a prefab is assigned, spawns a visual UFO per contact.")]
     [SerializeField] private bool spawnUfoVisuals = true;
 
     [Tooltip("Vertical offset (Y) applied when spawning the UFO visual.")]
     [SerializeField] private float ufoVisualSpawnYOffset = 0f;
+
+    [Tooltip("If enabled, scales spawned UFO visuals to a consistent world size based on renderer bounds.")]
+    [SerializeField] private bool autoNormalizeUfoVisualSize = true;
+
+    [Tooltip("Approximate target max dimension in world units after auto normalization.")]
+    [Min(0.1f)]
+    [SerializeField] private float targetUfoVisualSize = 3f;
 
     [Tooltip("If true, Intercept will remove the spawned UFO visual.")]
     [SerializeField] private bool destroyUfoVisualOnIntercept = true;
@@ -32,6 +46,50 @@ public class UFOManager : MonoBehaviour
     [Tooltip("Delay before destroying the UFO visual when Intercept is chosen.")]
     [Min(0f)]
     [SerializeField] private float interceptDestroyDelaySeconds = 1.0f;
+
+    [Tooltip("If true, dims the world map background while any UFO visual is active so 3D visuals are not fully hidden by UI.")]
+    [SerializeField] private bool dimWorldMapBackgroundWhileUfoVisible = true;
+
+    [Range(0f, 1f)]
+    [Tooltip("Background alpha used while at least one UFO visual is active.")]
+    [SerializeField] private float worldMapBackgroundDimAlpha = 0.45f;
+
+    [Tooltip("If enabled, spawned UFO visuals start large, drift away from camera, and auto-vanish.")]
+    [SerializeField] private bool animateAndExpireUfoVisuals = true;
+
+    [Tooltip("If true, visual lifetime follows the effective response timeout when timeout is enabled.")]
+    [SerializeField] private bool useResponseTimeoutForVisualLifetime = true;
+
+    [Tooltip("Fallback visual lifetime when response timeout is disabled or not used.")]
+    [Min(0.5f)]
+    [SerializeField] private float ufoVisualLifetimeSeconds = 20f;
+
+    [Tooltip("How far the UFO visual travels away from the camera before vanishing.")]
+    [Min(0.1f)]
+    [SerializeField] private float ufoVisualTravelDistance = 25f;
+
+    [Tooltip("If enabled, animated UFO visuals are positioned using camera viewport space so they remain visible while traveling.")]
+    [SerializeField] private bool keepAnimatedUfoInCameraView = true;
+
+    [Tooltip("Viewport margin used when picking the UFO start position (0 = edge, 0.5 = center only).")]
+    [Range(0f, 0.45f)]
+    [SerializeField] private float ufoViewportMargin = 0.18f;
+
+    [Tooltip("Depth from camera for initial animated UFO placement when viewport anchoring is enabled.")]
+    [Min(1f)]
+    [SerializeField] private float ufoStartDepthFromCamera = 10f;
+
+    [Tooltip("Depth from camera for final animated UFO position when viewport anchoring is enabled.")]
+    [Min(2f)]
+    [SerializeField] private float ufoEndDepthFromCamera = 40f;
+
+    [Tooltip("Initial scale multiplier applied at spawn before drifting away.")]
+    [Min(0.1f)]
+    [SerializeField] private float ufoVisualStartScaleMultiplier = 1.8f;
+
+    [Tooltip("Final scale multiplier when the visual reaches the end of its travel.")]
+    [Min(0.05f)]
+    [SerializeField] private float ufoVisualEndScaleMultiplier = 0.3f;
 
     [Header("Auto Spawn")]
     [SerializeField] private bool enableAutoSpawn = true;
@@ -140,6 +198,13 @@ public class UFOManager : MonoBehaviour
     [Tooltip("If enabled, logs UFO spawn/move events to the Console.")]
     [SerializeField] private bool debugLogUfoEvents = false;
 
+    [Tooltip("Temporary debug hotkey to spawn a UFO in front of the active camera during play mode.")]
+    [SerializeField] private bool debugEnableSpawnHotkey = true;
+
+    [Tooltip("Distance in front of camera used by the temporary spawn hotkey.")]
+    [Min(1f)]
+    [SerializeField] private float debugSpawnDistanceFromCamera = 14f;
+
     private float softStartBeganAt;
     private bool publishedPapalWarning;
 
@@ -148,6 +213,10 @@ public class UFOManager : MonoBehaviour
     private readonly Queue<int> contactIdOrder = new();
 
     private readonly Dictionary<int, GameObject> ufoVisualByContactId = new();
+    private readonly Dictionary<int, Coroutine> ufoVisualLifecycleCoroutineByContactId = new();
+    private Image worldMapBackgroundImage;
+    private bool hasCachedBackgroundAlpha;
+    private float cachedBackgroundAlpha = 1f;
 
     private readonly Dictionary<UFOSpeciesSegment, int> escalationStageBySegment = new();
     private readonly Dictionary<UFOSpeciesSegment, bool> overreachPrimedBySegment = new();
@@ -190,6 +259,20 @@ public class UFOManager : MonoBehaviour
     {
         if (autoSpawnAreaExtentsXZ.x < 0f) autoSpawnAreaExtentsXZ.x = 0f;
         if (autoSpawnAreaExtentsXZ.y < 0f) autoSpawnAreaExtentsXZ.y = 0f;
+        worldMapBackgroundDimAlpha = Mathf.Clamp01(worldMapBackgroundDimAlpha);
+        ufoVisualStartScaleMultiplier = Mathf.Max(0.1f, ufoVisualStartScaleMultiplier);
+        ufoVisualEndScaleMultiplier = Mathf.Max(0.05f, ufoVisualEndScaleMultiplier);
+        ufoVisualLifetimeSeconds = Mathf.Max(0.5f, ufoVisualLifetimeSeconds);
+        ufoVisualTravelDistance = Mathf.Max(0.1f, ufoVisualTravelDistance);
+        ufoViewportMargin = Mathf.Clamp(ufoViewportMargin, 0f, 0.45f);
+        ufoStartDepthFromCamera = Mathf.Max(1f, ufoStartDepthFromCamera);
+        ufoEndDepthFromCamera = Mathf.Max(ufoStartDepthFromCamera + 0.1f, ufoEndDepthFromCamera);
+    }
+
+    private void OnDisable()
+    {
+        StopAllVisualLifecycleCoroutines();
+        RestoreWorldMapBackgroundAlpha();
     }
 
     [Serializable]
@@ -265,7 +348,13 @@ public class UFOManager : MonoBehaviour
 
     private void TrySpawnUfoVisual(int contactId, Vector3 position)
     {
-        if (!spawnUfoVisuals || ufoPrefab == null)
+        if (!spawnUfoVisuals)
+        {
+            return;
+        }
+
+        var visualPrefab = GetVisualPrefabForSpawn();
+        if (visualPrefab == null)
         {
             return;
         }
@@ -276,14 +365,232 @@ public class UFOManager : MonoBehaviour
         }
 
         var spawnPos = position + Vector3.up * ufoVisualSpawnYOffset;
-        var spawned = Instantiate(ufoPrefab, spawnPos, Quaternion.identity);
-        spawned.name = $"{ufoPrefab.name} (Contact {contactId})";
+        var spawned = Instantiate(visualPrefab, spawnPos, Quaternion.identity);
+        spawned.name = $"{visualPrefab.name} (Contact {contactId})";
+        PrepareSpawnedVisual(spawned);
         ufoVisualByContactId[contactId] = spawned;
+        StartVisualLifecycle(contactId, spawned);
+        UpdateWorldMapBackgroundVisibility();
+    }
+
+    private void StartVisualLifecycle(int contactId, GameObject ufoVisual)
+    {
+        StopVisualLifecycle(contactId);
+
+        if (!animateAndExpireUfoVisuals || ufoVisual == null)
+        {
+            return;
+        }
+
+        var routine = StartCoroutine(AnimateAndExpireVisual(contactId, ufoVisual));
+        ufoVisualLifecycleCoroutineByContactId[contactId] = routine;
+    }
+
+    private void StopVisualLifecycle(int contactId)
+    {
+        if (!ufoVisualLifecycleCoroutineByContactId.TryGetValue(contactId, out var routine) || routine == null)
+        {
+            ufoVisualLifecycleCoroutineByContactId.Remove(contactId);
+            return;
+        }
+
+        StopCoroutine(routine);
+        ufoVisualLifecycleCoroutineByContactId.Remove(contactId);
+    }
+
+    private void StopAllVisualLifecycleCoroutines()
+    {
+        foreach (var kvp in ufoVisualLifecycleCoroutineByContactId)
+        {
+            if (kvp.Value != null)
+            {
+                StopCoroutine(kvp.Value);
+            }
+        }
+
+        ufoVisualLifecycleCoroutineByContactId.Clear();
+    }
+
+    private IEnumerator AnimateAndExpireVisual(int contactId, GameObject ufoVisual)
+    {
+        var lifeSeconds = GetUfoVisualLifetimeSeconds();
+        if (lifeSeconds <= 0f || ufoVisual == null)
+        {
+            yield break;
+        }
+
+        var startPosition = ufoVisual.transform.position;
+        var endPosition = ComputeVisualEndPosition(startPosition);
+
+        if (keepAnimatedUfoInCameraView && TryGetCameraAnchoredTrajectory(out var anchoredStart, out var anchoredEnd))
+        {
+            startPosition = anchoredStart;
+            endPosition = anchoredEnd;
+            ufoVisual.transform.position = startPosition;
+        }
+
+        var normalizedScale = ufoVisual.transform.localScale;
+        var startScale = normalizedScale * ufoVisualStartScaleMultiplier;
+        var endScale = normalizedScale * ufoVisualEndScaleMultiplier;
+        ufoVisual.transform.localScale = startScale;
+
+        var startTime = Time.realtimeSinceStartup;
+        while (ufoVisual != null)
+        {
+            var elapsed = Time.realtimeSinceStartup - startTime;
+            var t = Mathf.Clamp01(elapsed / lifeSeconds);
+
+            ufoVisual.transform.position = Vector3.Lerp(startPosition, endPosition, t);
+            ufoVisual.transform.localScale = Vector3.Lerp(startScale, endScale, t);
+
+            if (t >= 1f)
+            {
+                break;
+            }
+
+            yield return null;
+        }
+
+        ufoVisualLifecycleCoroutineByContactId.Remove(contactId);
+        RemoveUfoVisual(contactId, 0f);
+    }
+
+    private float GetUfoVisualLifetimeSeconds()
+    {
+        if (useResponseTimeoutForVisualLifetime)
+        {
+            var timeout = GetEffectiveResponseChoiceTimeoutSeconds();
+            if (timeout > 0f)
+            {
+                return timeout;
+            }
+        }
+
+        return ufoVisualLifetimeSeconds;
+    }
+
+    private Vector3 ComputeVisualEndPosition(Vector3 startPosition)
+    {
+        var cam = Camera.main != null ? Camera.main : UnityEngine.Object.FindAnyObjectByType<Camera>();
+        if (cam == null)
+        {
+            return startPosition + Vector3.forward * ufoVisualTravelDistance;
+        }
+
+        var awayFromCamera = startPosition - cam.transform.position;
+        if (awayFromCamera.sqrMagnitude < 0.0001f)
+        {
+            awayFromCamera = cam.transform.forward;
+        }
+
+        awayFromCamera.Normalize();
+        return startPosition + awayFromCamera * ufoVisualTravelDistance;
+    }
+
+    private bool TryGetCameraAnchoredTrajectory(out Vector3 startPosition, out Vector3 endPosition)
+    {
+        startPosition = default;
+        endPosition = default;
+
+        var cam = Camera.main != null ? Camera.main : UnityEngine.Object.FindAnyObjectByType<Camera>();
+        if (cam == null)
+        {
+            return false;
+        }
+
+        var min = ufoViewportMargin;
+        var max = 1f - ufoViewportMargin;
+        var x = UnityEngine.Random.Range(min, max);
+        var y = UnityEngine.Random.Range(min, max);
+
+        var endX = Mathf.Lerp(x, 0.5f, 0.5f);
+        var endY = Mathf.Lerp(y, 0.5f, 0.5f);
+
+        startPosition = cam.ViewportToWorldPoint(new Vector3(x, y, ufoStartDepthFromCamera));
+        endPosition = cam.ViewportToWorldPoint(new Vector3(endX, endY, ufoEndDepthFromCamera));
+        return true;
+    }
+
+    private void PrepareSpawnedVisual(GameObject spawned)
+    {
+        if (spawned == null)
+        {
+            return;
+        }
+
+        if (!spawned.activeSelf)
+        {
+            spawned.SetActive(true);
+        }
+
+        if (!autoNormalizeUfoVisualSize)
+        {
+            return;
+        }
+
+        var renderers = spawned.GetComponentsInChildren<Renderer>(includeInactive: true);
+        if (renderers == null || renderers.Length == 0)
+        {
+            Debug.LogWarning($"[UFO] Spawned visual '{spawned.name}' has no Renderer components. Check model import.");
+            return;
+        }
+
+        var hasBounds = false;
+        var bounds = new Bounds(spawned.transform.position, Vector3.zero);
+        foreach (var r in renderers)
+        {
+            if (r == null)
+            {
+                continue;
+            }
+
+            if (!hasBounds)
+            {
+                bounds = r.bounds;
+                hasBounds = true;
+            }
+            else
+            {
+                bounds.Encapsulate(r.bounds);
+            }
+        }
+
+        if (!hasBounds)
+        {
+            return;
+        }
+
+        var maxDimension = Mathf.Max(bounds.size.x, bounds.size.y, bounds.size.z);
+        if (maxDimension <= 0.0001f)
+        {
+            Debug.LogWarning($"[UFO] Spawned visual '{spawned.name}' has near-zero bounds. Check model scale/import units.");
+            return;
+        }
+
+        var scaleFactor = targetUfoVisualSize / maxDimension;
+        if (Mathf.Abs(scaleFactor - 1f) < 0.01f)
+        {
+            return;
+        }
+
+        spawned.transform.localScale *= scaleFactor;
+        DebugLogUfoEvent($"UFO visual normalized: maxDimension={maxDimension:0.###}, scaleFactor={scaleFactor:0.###}, target={targetUfoVisualSize:0.###}");
+    }
+
+    private GameObject GetVisualPrefabForSpawn()
+    {
+        if (useSmugglerPrefabAsDefaultVisual && smugglerUfoPrefab != null)
+        {
+            return smugglerUfoPrefab;
+        }
+
+        return ufoPrefab;
     }
 
     private void Update()
     {
         TickAutoSpawn();
+        TryHandleDebugSpawnHotkey();
 
         if (!enableResponseChoices || !hasPendingResponse)
         {
@@ -497,6 +804,60 @@ public class UFOManager : MonoBehaviour
         }
 
         Debug.Log(message);
+    }
+
+    private void TryHandleDebugSpawnHotkey()
+    {
+        if (!debugEnableSpawnHotkey || !Application.isPlaying)
+        {
+            return;
+        }
+
+        var spawnRequested = false;
+
+#if ENABLE_INPUT_SYSTEM
+        var keyboard = Keyboard.current;
+        if (keyboard != null && (keyboard.f8Key.wasPressedThisFrame || keyboard.uKey.wasPressedThisFrame))
+        {
+            spawnRequested = true;
+        }
+#endif
+
+#if ENABLE_LEGACY_INPUT_MANAGER
+        if (!spawnRequested && (Input.GetKeyDown(KeyCode.F8) || Input.GetKeyDown(KeyCode.U)))
+        {
+            spawnRequested = true;
+        }
+#endif
+
+        if (!spawnRequested)
+        {
+            return;
+        }
+
+        var spawnPosition = GetDebugSpawnPositionFromCamera();
+        Debug.Log($"[UFO][Debug] Hotkey spawn at {spawnPosition}. (F8/U)");
+        SpawnUFO(spawnPosition);
+    }
+
+    private Vector3 GetDebugSpawnPositionFromCamera()
+    {
+        var cam = Camera.main != null ? Camera.main : UnityEngine.Object.FindAnyObjectByType<Camera>();
+        if (cam == null)
+        {
+            return new Vector3(autoSpawnAreaCenter.x, autoSpawnAreaCenter.y, autoSpawnAreaCenter.z + debugSpawnDistanceFromCamera);
+        }
+
+        var forward = cam.transform.forward;
+        forward.y = 0f;
+        if (forward.sqrMagnitude < 0.0001f)
+        {
+            forward = Vector3.forward;
+        }
+        forward.Normalize();
+
+        var pos = cam.transform.position + forward * debugSpawnDistanceFromCamera;
+        return pos;
     }
 
     private string BuildPriorityEffectsReadout()
@@ -826,12 +1187,36 @@ public class UFOManager : MonoBehaviour
 
                 if (ufoVisualByContactId.TryGetValue(contactId, out var ufo) && ufo != null)
                 {
-                    ufoVisualByContactId.Remove(contactId);
-                    Destroy(ufo, interceptDestroyDelaySeconds);
+                    RemoveUfoVisual(contactId, interceptDestroyDelaySeconds);
                 }
                 break;
             }
         }
+    }
+
+    private void RemoveUfoVisual(int contactId, float destroyDelaySeconds)
+    {
+        StopVisualLifecycle(contactId);
+
+        if (!ufoVisualByContactId.TryGetValue(contactId, out var ufo) || ufo == null)
+        {
+            ufoVisualByContactId.Remove(contactId);
+            UpdateWorldMapBackgroundVisibility();
+            return;
+        }
+
+        ufoVisualByContactId.Remove(contactId);
+
+        if (destroyDelaySeconds > 0f)
+        {
+            Destroy(ufo, destroyDelaySeconds);
+        }
+        else
+        {
+            Destroy(ufo);
+        }
+
+        UpdateWorldMapBackgroundVisibility();
     }
 
     public bool TryGetStoredResponse(int contactId, out string response)
@@ -1126,12 +1511,88 @@ public class UFOManager : MonoBehaviour
             var oldest = contactIdOrder.Dequeue();
             contactRecordsById.Remove(oldest);
 
-            if (ufoVisualByContactId.TryGetValue(oldest, out var ufo) && ufo != null)
+            if (ufoVisualByContactId.ContainsKey(oldest))
             {
-                Destroy(ufo);
+                RemoveUfoVisual(oldest, 0f);
             }
-            ufoVisualByContactId.Remove(oldest);
         }
+    }
+
+    private void UpdateWorldMapBackgroundVisibility()
+    {
+        if (!dimWorldMapBackgroundWhileUfoVisible)
+        {
+            RestoreWorldMapBackgroundAlpha();
+            return;
+        }
+
+        if (!TryGetWorldMapBackgroundImage(out var image) || image == null)
+        {
+            return;
+        }
+
+        var hasActiveVisuals = false;
+        foreach (var kvp in ufoVisualByContactId)
+        {
+            if (kvp.Value != null)
+            {
+                hasActiveVisuals = true;
+                break;
+            }
+        }
+
+        if (hasActiveVisuals)
+        {
+            if (!hasCachedBackgroundAlpha)
+            {
+                cachedBackgroundAlpha = image.color.a;
+                hasCachedBackgroundAlpha = true;
+            }
+
+            var color = image.color;
+            color.a = worldMapBackgroundDimAlpha;
+            image.color = color;
+            return;
+        }
+
+        RestoreWorldMapBackgroundAlpha();
+    }
+
+    private bool TryGetWorldMapBackgroundImage(out Image image)
+    {
+        image = worldMapBackgroundImage;
+        if (image != null)
+        {
+            return true;
+        }
+
+        var background = GameObject.Find("WorldMapBackground");
+        if (background == null)
+        {
+            return false;
+        }
+
+        image = background.GetComponent<Image>();
+        worldMapBackgroundImage = image;
+        return image != null;
+    }
+
+    private void RestoreWorldMapBackgroundAlpha()
+    {
+        if (!hasCachedBackgroundAlpha)
+        {
+            return;
+        }
+
+        if (!TryGetWorldMapBackgroundImage(out var image) || image == null)
+        {
+            return;
+        }
+
+        var color = image.color;
+        color.a = cachedBackgroundAlpha;
+        image.color = color;
+        hasCachedBackgroundAlpha = false;
     }
 
     private void PublishPapalWarningIfNeeded(BoxMessageQueue queue)

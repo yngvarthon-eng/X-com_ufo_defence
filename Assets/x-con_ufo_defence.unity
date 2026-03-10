@@ -628,7 +628,7 @@ GameObject:
   - component: {fileID: 508074662}
   - component: {fileID: 508074661}
   m_Layer: 5
-  m_Name: MapDropdown
+  m_Name: Map Style Selector
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0

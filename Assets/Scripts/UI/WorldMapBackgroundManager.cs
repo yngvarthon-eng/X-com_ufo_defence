@@ -7,7 +7,7 @@ public class WorldMapBackgroundManager : MonoBehaviour
 {
     private const int DefaultMapIndex = 0;
     private const string BackgroundObjectName = "WorldMapBackground";
-    private const string DropdownObjectName = "MapDropdown";
+    private const string DropdownObjectName = "Map Style Selector";
     private const string MapStylePrefKey = "xcon.worldmap.styleIndex";
 
     [Header("World Map Sprites")]

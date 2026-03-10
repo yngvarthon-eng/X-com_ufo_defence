@@ -77,6 +77,7 @@ public class GameManager : MonoBehaviour
     private float missionElapsedSeconds;
     private bool missionEnded;
     private GameObject missionEndPanel;
+    private bool freeOpsMode;
     private UFOManager cachedUfoManager;
     private int bestScore;
     private Text missionHudLabel;
@@ -239,6 +240,7 @@ public class GameManager : MonoBehaviour
     {
         missionElapsedSeconds = 0f;
         missionEnded = false;
+        freeOpsMode = false;
 
         GameMenuController.SetPaused(false);
 
@@ -490,7 +492,7 @@ public class GameManager : MonoBehaviour
 
     private void TickMissionState()
     {
-        if (!enableMissionEndConditions || missionEnded)
+        if (!enableMissionEndConditions || missionEnded || freeOpsMode)
         {
             return;
         }
@@ -637,12 +639,13 @@ public class GameManager : MonoBehaviour
         }
 
         var pausedSuffix = GameMenuController.IsPaused ? "  [PAUSED]" : string.Empty;
+        var opsSuffix = freeOpsMode ? "  [FREE OPS]" : string.Empty;
         var medalText = MedalTierToLabel(medalTier);
         var progressText = nextMedalTarget > 0
             ? $"Next Medal At: {nextMedalTarget}"
             : "Top Medal Reached";
         missionHudLabel.text =
-            $"MISSION{pausedSuffix}\n" +
+            $"MISSION{pausedSuffix}{opsSuffix}\n" +
             $"Time Left: {minutes}:{seconds:00}  Score: {score}\n" +
             $"Best: {bestScore}  Medal: {medalText}\n" +
             $"Priority: {currentPriority}  {progressText}\n" +
@@ -699,11 +702,25 @@ public class GameManager : MonoBehaviour
         };
     }
 
+    private static Color GetMedalColor(MedalTier tier)
+    {
+        return tier switch
+        {
+            MedalTier.Gold => new Color(1f, 0.84f, 0.24f, 1f),
+            MedalTier.Silver => new Color(0.85f, 0.88f, 0.92f, 1f),
+            MedalTier.Bronze => new Color(0.83f, 0.56f, 0.34f, 1f),
+            _ => new Color(0.75f, 0.75f, 0.75f, 1f),
+        };
+    }
+
     private void ShowMissionEndPanel(MissionEndReason reason, UFOManager ufo, int score, int bestScore, bool isNewBest)
     {
         if (missionEndPanel != null)
         {
-            Destroy(missionEndPanel);
+            var existingCanvas = missionEndPanel.transform.parent != null
+                ? missionEndPanel.transform.parent.gameObject
+                : missionEndPanel;
+            Destroy(existingCanvas);
             missionEndPanel = null;
         }
 
@@ -737,15 +754,30 @@ public class GameManager : MonoBehaviour
         var heading = CreatePanelLabel(missionEndPanel.transform, "Heading", headingText, 34, new Vector2(0f, -44f));
         heading.alignment = TextAnchor.MiddleCenter;
 
+        var medalTier = GetMedalTier(score);
+        var badge = CreatePanelLabel(missionEndPanel.transform, "MedalBadge", $"{MedalTierToLabel(medalTier)} Medal", 24, new Vector2(0f, -88f));
+        badge.alignment = TextAnchor.MiddleCenter;
+        badge.color = GetMedalColor(medalTier);
+
         var summary = BuildMissionSummary(reason, ufo, score, bestScore, isNewBest);
-        var summaryLabel = CreatePanelLabel(missionEndPanel.transform, "Summary", summary, 20, new Vector2(0f, -178f));
+        var summaryLabel = CreatePanelLabel(missionEndPanel.transform, "Summary", summary, 18, new Vector2(0f, -210f));
         summaryLabel.alignment = TextAnchor.UpperCenter;
 
-        var retryButton = CreatePanelButton(missionEndPanel.transform, "RetryButton", "Retry", new Vector2(-95f, -322f), new Vector2(170f, 46f));
-        retryButton.onClick.AddListener(RetryMission);
+        var primaryButtonText = reason == MissionEndReason.Victory ? "Play Again" : "Retry";
+        var secondaryButtonText = reason == MissionEndReason.Victory ? "Continue Ops" : "Review";
 
-        var quitButton = CreatePanelButton(missionEndPanel.transform, "QuitButton", "Quit", new Vector2(95f, -322f), new Vector2(170f, 46f));
-        quitButton.onClick.AddListener(QuitMission);
+        var retryButton = CreatePanelButton(missionEndPanel.transform, "PrimaryActionButton", primaryButtonText, new Vector2(-95f, -322f), new Vector2(170f, 46f));
+        retryButton.onClick.AddListener(RestartMission);
+
+        var secondaryButton = CreatePanelButton(missionEndPanel.transform, "SecondaryActionButton", secondaryButtonText, new Vector2(95f, -322f), new Vector2(170f, 46f));
+        if (reason == MissionEndReason.Victory)
+        {
+            secondaryButton.onClick.AddListener(EnterFreeOpsMode);
+        }
+        else
+        {
+            secondaryButton.onClick.AddListener(ReviewAfterFailure);
+        }
     }
 
     private string BuildMissionSummary(MissionEndReason reason, UFOManager ufo, int score, int bestScore, bool isNewBest)
@@ -765,8 +797,15 @@ public class GameManager : MonoBehaviour
             return $"{resultLine}\n\nTime: {elapsedMinutes}:{elapsedSecondsPart:00}\nScore: {score}\nMedal: {medalText}\nBest: {bestScore}";
         }
 
+        var responsePoints = ufo.RespondedContactsCount * responseScoreWeight;
+        var coveragePoints = ufo.TotalContactsSpawned * contactScoreWeight;
+        var educationPoints = Mathf.RoundToInt(ufo.Education * educationScoreWeight);
+        var missedPenalty = ufo.ExpiredResponsesCount * missedResponsePenaltyWeight;
+        var riskPenalty = Mathf.RoundToInt(ufo.PermitRisk * permitRiskPenaltyWeight);
+        var survivalBonus = Mathf.RoundToInt(Mathf.Min(missionElapsedSeconds, missionDurationSeconds));
+
         var bestSuffix = isNewBest ? " (NEW)" : string.Empty;
-        return $"{resultLine}\n\nTime: {elapsedMinutes}:{elapsedSecondsPart:00}\nContacts: {ufo.TotalContactsSpawned}\nResponses: {ufo.RespondedContactsCount}\nMissed: {ufo.ExpiredResponsesCount}\nEducation: {Mathf.RoundToInt(ufo.Education)}\nPermitRisk: {Mathf.RoundToInt(ufo.PermitRisk)}\n\nScore: {score}\nMedal: {medalText}\nBest: {bestScore}{bestSuffix}";
+        return $"{resultLine}\n\nTime: {elapsedMinutes}:{elapsedSecondsPart:00}\nContacts: {ufo.TotalContactsSpawned}  Responses: {ufo.RespondedContactsCount}  Missed: {ufo.ExpiredResponsesCount}\nEducation: {Mathf.RoundToInt(ufo.Education)}  PermitRisk: {Mathf.RoundToInt(ufo.PermitRisk)}\n\nScore Breakdown:\n<color=#8CFF8C>+ Responses: {responsePoints}</color>  <color=#8CFF8C>+ Coverage: {coveragePoints}</color>\n<color=#8CFF8C>+ Education: {educationPoints}</color>  <color=#8CFF8C>+ Survival: {survivalBonus}</color>\n<color=#FF9B9B>- Missed: {missedPenalty}</color>  <color=#FF9B9B>- Risk: {riskPenalty}</color>\n\nScore: {score}\nMedal: {medalText}\nBest: {bestScore}{bestSuffix}";
     }
 
     private static Text CreatePanelLabel(Transform parent, string name, string content, int fontSize, Vector2 anchoredPosition)
@@ -787,6 +826,7 @@ public class GameManager : MonoBehaviour
         text.fontSize = fontSize;
         text.alignment = TextAnchor.UpperCenter;
         text.color = Color.white;
+        text.supportRichText = true;
         text.horizontalOverflow = HorizontalWrapMode.Wrap;
         text.verticalOverflow = VerticalWrapMode.Overflow;
         text.text = content;
@@ -830,10 +870,38 @@ public class GameManager : MonoBehaviour
         return button;
     }
 
-    private static void RetryMission()
+    private void RestartMission()
     {
+        freeOpsMode = false;
         GameMenuController.SetPaused(false);
         SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+    }
+
+    private void EnterFreeOpsMode()
+    {
+        freeOpsMode = true;
+        missionEnded = false;
+
+        if (missionEndPanel != null)
+        {
+            var canvas = missionEndPanel.transform.parent != null
+                ? missionEndPanel.transform.parent.gameObject
+                : missionEndPanel;
+            Destroy(canvas);
+            missionEndPanel = null;
+        }
+
+        if (missionHudPanel != null)
+        {
+            missionHudPanel.SetActive(true);
+        }
+
+        GameMenuController.SetPaused(false);
+    }
+
+    private void ReviewAfterFailure()
+    {
+        EnterFreeOpsMode();
     }
 
     private static void QuitMission()

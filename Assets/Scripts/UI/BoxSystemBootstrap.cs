@@ -111,7 +111,7 @@ namespace XCon.UI.Boxes
 
             var panelRect = panel.GetComponent<RectTransform>();
             panelRect.anchorMin = new Vector2(0.02f, 0.02f);
-            panelRect.anchorMax = new Vector2(0.45f, 0.30f);
+            panelRect.anchorMax = new Vector2(0.45f, 0.42f);
             panelRect.offsetMin = Vector2.zero;
             panelRect.offsetMax = Vector2.zero;
 
@@ -129,7 +129,7 @@ namespace XCon.UI.Boxes
             bodyText.color = new Color(1f, 1f, 1f, 0.95f);
             bodyText.horizontalOverflow = HorizontalWrapMode.Wrap;
             bodyText.verticalOverflow = VerticalWrapMode.Truncate;
-            SetRect(bodyGo.GetComponent<RectTransform>(), new Vector2(0.03f, 0.16f), new Vector2(0.97f, 0.58f));
+            SetRect(bodyGo.GetComponent<RectTransform>(), new Vector2(0.03f, 0.14f), new Vector2(0.97f, 0.72f));
 
             var queueGo = CreateText("Queue", panel.transform, fontSize: 12, fontStyle: FontStyle.Normal);
             queueText = queueGo.GetComponent<Text>();
@@ -137,7 +137,7 @@ namespace XCon.UI.Boxes
             queueText.alignment = TextAnchor.LowerLeft;
             queueText.horizontalOverflow = HorizontalWrapMode.Wrap;
             queueText.verticalOverflow = VerticalWrapMode.Truncate;
-            SetRect(queueGo.GetComponent<RectTransform>(), new Vector2(0.03f, 0.10f), new Vector2(0.97f, 0.16f));
+            SetRect(queueGo.GetComponent<RectTransform>(), new Vector2(0.03f, 0.08f), new Vector2(0.97f, 0.14f));
 
             var hintGo = CreateText("Hint", panel.transform, fontSize: 12, fontStyle: FontStyle.Normal);
             var hintText = hintGo.GetComponent<Text>();

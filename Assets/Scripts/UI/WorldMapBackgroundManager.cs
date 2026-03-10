@@ -2,12 +2,15 @@ using UnityEngine;
 using UnityEngine.UI;
 using System.Collections;
 using System.Collections.Generic;
+using TMPro;
 
 public class WorldMapBackgroundManager : MonoBehaviour
 {
     private const int DefaultMapIndex = 0;
     private const string BackgroundObjectName = "WorldMapBackground";
     private const string DropdownObjectName = "Map Style Selector";
+    private const string ResetButtonObjectName = "MapSelectorButton";
+    private const string PausePlayButtonObjectName = "PausePlayButton";
     private const string MapStylePrefKey = "xcon.worldmap.styleIndex";
 
     [Header("World Map Sprites")]
@@ -19,6 +22,7 @@ public class WorldMapBackgroundManager : MonoBehaviour
     [SerializeField] private Image backgroundImage;
     [SerializeField] private Dropdown mapDropdown;
     [SerializeField] private Button resetMapStyleButton;
+    [SerializeField] private Button pausePlayButton;
 
     [Header("Transitions")]
     [SerializeField] private bool enableFadeTransitions = true;
@@ -45,6 +49,7 @@ public class WorldMapBackgroundManager : MonoBehaviour
     void Awake()
     {
         ResolveReferences();
+        EnsurePausePlayButtonExists();
         ApplyLayoutSettings();
 
         mapOptions = new Dictionary<int, Sprite>
@@ -77,6 +82,12 @@ public class WorldMapBackgroundManager : MonoBehaviour
         {
             resetMapStyleButton.onClick.AddListener(ResetMapStyleToDefault);
         }
+
+        if (pausePlayButton != null)
+        {
+            pausePlayButton.onClick.AddListener(TogglePausePlay);
+            RefreshPausePlayButtonLabel();
+        }
     }
 
     private void OnDestroy()
@@ -95,6 +106,11 @@ public class WorldMapBackgroundManager : MonoBehaviour
         if (resetMapStyleButton != null)
         {
             resetMapStyleButton.onClick.RemoveListener(ResetMapStyleToDefault);
+        }
+
+        if (pausePlayButton != null)
+        {
+            pausePlayButton.onClick.RemoveListener(TogglePausePlay);
         }
     }
 
@@ -216,6 +232,80 @@ public class WorldMapBackgroundManager : MonoBehaviour
             {
                 mapDropdown = dropdownObject.GetComponent<Dropdown>();
             }
+        }
+
+        if (resetMapStyleButton == null)
+        {
+            var resetButtonObject = GameObject.Find(ResetButtonObjectName);
+            if (resetButtonObject != null)
+            {
+                resetMapStyleButton = resetButtonObject.GetComponent<Button>();
+            }
+        }
+
+        if (pausePlayButton == null)
+        {
+            var pauseButtonObject = GameObject.Find(PausePlayButtonObjectName);
+            if (pauseButtonObject != null)
+            {
+                pausePlayButton = pauseButtonObject.GetComponent<Button>();
+            }
+        }
+    }
+
+    private void EnsurePausePlayButtonExists()
+    {
+        if (pausePlayButton != null || resetMapStyleButton == null)
+        {
+            return;
+        }
+
+        var template = resetMapStyleButton.gameObject;
+        var clone = Instantiate(template, template.transform.parent);
+        clone.name = PausePlayButtonObjectName;
+
+        if (clone.TryGetComponent<RectTransform>(out var cloneRect)
+            && template.TryGetComponent<RectTransform>(out var templateRect))
+        {
+            cloneRect.anchorMin = templateRect.anchorMin;
+            cloneRect.anchorMax = templateRect.anchorMax;
+            cloneRect.pivot = templateRect.pivot;
+            cloneRect.sizeDelta = templateRect.sizeDelta;
+            cloneRect.anchoredPosition = templateRect.anchoredPosition + new Vector2(0f, 38f);
+        }
+
+        pausePlayButton = clone.GetComponent<Button>();
+        RefreshPausePlayButtonLabel();
+    }
+
+    private void TogglePausePlay()
+    {
+        var paused = Time.timeScale <= 0.001f;
+        Time.timeScale = paused ? 1f : 0f;
+        RefreshPausePlayButtonLabel();
+    }
+
+    private void RefreshPausePlayButtonLabel()
+    {
+        if (pausePlayButton == null)
+        {
+            return;
+        }
+
+        var isPaused = Time.timeScale <= 0.001f;
+        var label = isPaused ? "Play" : "Pause";
+
+        var tmp = pausePlayButton.GetComponentInChildren<TMP_Text>(includeInactive: true);
+        if (tmp != null)
+        {
+            tmp.text = label;
+            return;
+        }
+
+        var legacyText = pausePlayButton.GetComponentInChildren<Text>(includeInactive: true);
+        if (legacyText != null)
+        {
+            legacyText.text = label;
         }
     }
 

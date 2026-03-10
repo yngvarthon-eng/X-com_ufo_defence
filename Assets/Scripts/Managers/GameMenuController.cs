@@ -36,6 +36,7 @@ public class GameMenuController : MonoBehaviour
     private Coroutine statusToastCoroutine;
     private RectTransform menuPanelRect;
     private RectTransform menuToggleRect;
+    private InputField commanderNameInput;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     private static void ResetPauseStateOnSubsystemRegistration()
@@ -101,18 +102,26 @@ public class GameMenuController : MonoBehaviour
         menuPanelRect.anchorMax = new Vector2(1f, 1f);
         menuPanelRect.pivot = new Vector2(1f, 1f);
         menuPanelRect.anchoredPosition = new Vector2(-20f, -70f);
-        menuPanelRect.sizeDelta = new Vector2(280f, 250f);
+        menuPanelRect.sizeDelta = new Vector2(320f, 332f);
 
-        var newGameButton = CreateButton(menuPanel.transform, "NewGameButton", "New Game", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -30f), new Vector2(240f, 42f));
+        CreateTextLabel(menuPanel.transform, "CommanderLabel", "Commander Name", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -22f), new Vector2(260f, 24f), 16);
+
+        commanderNameInput = CreateInputField(menuPanel.transform, "CommanderNameInput", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -52f), new Vector2(260f, 36f), "Enter commander name");
+        SyncCommanderInputFromState();
+
+        var applyNameButton = CreateButton(menuPanel.transform, "ApplyCommanderNameButton", "Apply Name", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -94f), new Vector2(260f, 36f));
+        applyNameButton.onClick.AddListener(ApplyCommanderNameFromInput);
+
+        var newGameButton = CreateButton(menuPanel.transform, "NewGameButton", "New Game", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -140f), new Vector2(260f, 40f));
         newGameButton.onClick.AddListener(NewGame);
 
-        var loadButton = CreateButton(menuPanel.transform, "LoadButton", "Load", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -82f), new Vector2(240f, 42f));
+        var loadButton = CreateButton(menuPanel.transform, "LoadButton", "Load", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -186f), new Vector2(260f, 40f));
         loadButton.onClick.AddListener(LoadGame);
 
-        var saveButton = CreateButton(menuPanel.transform, "SaveButton", "Save", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -134f), new Vector2(240f, 42f));
+        var saveButton = CreateButton(menuPanel.transform, "SaveButton", "Save", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -232f), new Vector2(260f, 40f));
         saveButton.onClick.AddListener(SaveGame);
 
-        var quitButton = CreateButton(menuPanel.transform, "QuitButton", "Quit", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -186f), new Vector2(240f, 42f));
+        var quitButton = CreateButton(menuPanel.transform, "QuitButton", "Quit", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -278f), new Vector2(260f, 40f));
         quitButton.onClick.AddListener(QuitGame);
 
         menuPanel.SetActive(false);
@@ -153,6 +162,81 @@ public class GameMenuController : MonoBehaviour
         text.text = label;
 
         return button;
+    }
+
+    private static Text CreateTextLabel(Transform parent, string objectName, string textValue, Vector2 anchorMin, Vector2 anchorMax, Vector2 anchoredPosition, Vector2 size, int fontSize)
+    {
+        var go = new GameObject(objectName, typeof(Text));
+        go.transform.SetParent(parent, false);
+
+        var rect = go.GetComponent<RectTransform>();
+        rect.anchorMin = anchorMin;
+        rect.anchorMax = anchorMax;
+        rect.pivot = new Vector2(0.5f, 0.5f);
+        rect.anchoredPosition = anchoredPosition;
+        rect.sizeDelta = size;
+
+        var label = go.GetComponent<Text>();
+        var font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf") ?? Resources.GetBuiltinResource<Font>("Arial.ttf");
+        label.font = font;
+        label.fontSize = fontSize;
+        label.alignment = TextAnchor.MiddleLeft;
+        label.color = new Color(0.95f, 0.95f, 0.95f, 1f);
+        label.text = textValue;
+        return label;
+    }
+
+    private static InputField CreateInputField(Transform parent, string objectName, Vector2 anchorMin, Vector2 anchorMax, Vector2 anchoredPosition, Vector2 size, string placeholderText)
+    {
+        var go = new GameObject(objectName, typeof(Image), typeof(InputField));
+        go.transform.SetParent(parent, false);
+
+        var rect = go.GetComponent<RectTransform>();
+        rect.anchorMin = anchorMin;
+        rect.anchorMax = anchorMax;
+        rect.pivot = new Vector2(0.5f, 0.5f);
+        rect.anchoredPosition = anchoredPosition;
+        rect.sizeDelta = size;
+
+        var bg = go.GetComponent<Image>();
+        bg.color = new Color(1f, 1f, 1f, 0.96f);
+
+        var font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf") ?? Resources.GetBuiltinResource<Font>("Arial.ttf");
+
+        var placeholderGo = new GameObject("Placeholder", typeof(Text));
+        placeholderGo.transform.SetParent(go.transform, false);
+        var placeholderRect = placeholderGo.GetComponent<RectTransform>();
+        placeholderRect.anchorMin = Vector2.zero;
+        placeholderRect.anchorMax = Vector2.one;
+        placeholderRect.offsetMin = new Vector2(10f, 6f);
+        placeholderRect.offsetMax = new Vector2(-10f, -6f);
+        var placeholder = placeholderGo.GetComponent<Text>();
+        placeholder.font = font;
+        placeholder.fontSize = 18;
+        placeholder.alignment = TextAnchor.MiddleLeft;
+        placeholder.color = new Color(0.35f, 0.35f, 0.35f, 0.8f);
+        placeholder.text = placeholderText;
+
+        var textGo = new GameObject("Text", typeof(Text));
+        textGo.transform.SetParent(go.transform, false);
+        var textRect = textGo.GetComponent<RectTransform>();
+        textRect.anchorMin = Vector2.zero;
+        textRect.anchorMax = Vector2.one;
+        textRect.offsetMin = new Vector2(10f, 6f);
+        textRect.offsetMax = new Vector2(-10f, -6f);
+        var inputText = textGo.GetComponent<Text>();
+        inputText.font = font;
+        inputText.fontSize = 18;
+        inputText.alignment = TextAnchor.MiddleLeft;
+        inputText.color = new Color(0.1f, 0.1f, 0.1f, 1f);
+        inputText.supportRichText = false;
+
+        var input = go.GetComponent<InputField>();
+        input.textComponent = inputText;
+        input.placeholder = placeholder;
+        input.lineType = InputField.LineType.SingleLine;
+
+        return input;
     }
 
     private void ToggleMenuPanel()
@@ -277,6 +361,7 @@ public class GameMenuController : MonoBehaviour
 
         if (visible)
         {
+            SyncCommanderInputFromState();
             menuForcedPause = !IsPaused;
             if (menuForcedPause)
             {
@@ -454,5 +539,31 @@ public class GameMenuController : MonoBehaviour
 #else
         Application.Quit();
 #endif
+    }
+
+    private void SyncCommanderInputFromState()
+    {
+        if (commanderNameInput == null)
+        {
+            return;
+        }
+
+        var manager = GameManager.Instance != null ? GameManager.Instance : UnityEngine.Object.FindAnyObjectByType<GameManager>();
+        commanderNameInput.SetTextWithoutNotify(manager != null ? manager.CommanderName : string.Empty);
+    }
+
+    private void ApplyCommanderNameFromInput()
+    {
+        var manager = GameManager.Instance != null ? GameManager.Instance : UnityEngine.Object.FindAnyObjectByType<GameManager>();
+        if (manager == null)
+        {
+            ShowStatusToast("Game manager missing");
+            return;
+        }
+
+        var nextName = commanderNameInput != null ? commanderNameInput.text : string.Empty;
+        manager.SetCommanderName(nextName, persist: true);
+        SyncCommanderInputFromState();
+        ShowStatusToast($"Commander: {manager.CommanderName}");
     }
 }

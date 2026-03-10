@@ -180,11 +180,6 @@ public class WorldMapBackgroundManager : MonoBehaviour
         guideLineThickness = Mathf.Clamp(guideLineThickness, 1f, 12f);
         guideLineLengthNormalized = Mathf.Clamp(guideLineLengthNormalized, 0.2f, 1f);
         ApplyLayoutSettings(allowRectTransformWrites: false);
-
-        if (Application.isPlaying)
-        {
-            RefreshCenterGuideLine();
-        }
     }
 
     private void OnMapDropdownChanged(int index)

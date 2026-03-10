@@ -26,6 +26,7 @@ public class GameManager : MonoBehaviour
 
     private const string PickPriorityTriggerKey = "thinking/pick_priority";
     private const string WelcomeTriggerKey = "thinking/welcome_intro";
+    private const string AutoLoadPriorityPrefKey = "xcon.save.autoload.priority";
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
     private static void EnsureExists()
@@ -116,7 +117,33 @@ public class GameManager : MonoBehaviour
             gameObject.AddComponent<BaseManager>();
         }
 
+        if (GetComponent<GameMenuController>() == null)
+        {
+            gameObject.AddComponent<GameMenuController>();
+        }
+
+        TryApplyAutoLoadedPriority();
+
         StartCoroutine(PublishStartupWelcomePrompt());
+    }
+
+    private void TryApplyAutoLoadedPriority()
+    {
+        if (!PlayerPrefs.HasKey(AutoLoadPriorityPrefKey))
+        {
+            return;
+        }
+
+        var raw = PlayerPrefs.GetInt(AutoLoadPriorityPrefKey, (int)StrategicPriority.Coverage);
+        PlayerPrefs.DeleteKey(AutoLoadPriorityPrefKey);
+        PlayerPrefs.Save();
+
+        if (raw < (int)StrategicPriority.Coverage || raw > (int)StrategicPriority.Response)
+        {
+            raw = (int)StrategicPriority.Coverage;
+        }
+
+        SetPriority((StrategicPriority)raw, publishFeedback: true);
     }
 
     private IEnumerator PublishStartupWelcomePrompt()
@@ -172,9 +199,25 @@ public class GameManager : MonoBehaviour
             return;
         }
 
+        SetPriority(choice, publishFeedback: true);
+    }
+
+    public void SetPriority(StrategicPriority choice, bool publishFeedback)
+    {
         currentPriority = choice;
 
+        if (!publishFeedback)
+        {
+            return;
+        }
+
         var body = $"Strategic Priority (press 1-3 anytime):\n1) Coverage\n2) Research\n3) Response\n\nCurrent: {choice}\n\nTip: Use 1-4 on active contact prompts to choose response.";
+
+        var queue = BoxMessageQueue.Instance;
+        if (queue == null)
+        {
+            return;
+        }
 
         // Ensure feedback appears even if another message was active.
         queue.Publish(new BoxMessage(

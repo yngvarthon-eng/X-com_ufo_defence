@@ -15,7 +15,7 @@ public class UFOManager : MonoBehaviour
 {
     [Header("Boxes")]
     [SerializeField] private bool publishUfoSpottedBoxes = true;
-    [SerializeField] private float thinkingDelaySeconds = 0.25f;
+    [SerializeField] private float thinkingDelaySeconds = 0.15f;
 
     [Header("UFO Visuals")]
     [Tooltip("Optional prefab spawned at the contact position when a UFO is detected.")]
@@ -96,15 +96,15 @@ public class UFOManager : MonoBehaviour
 
     [Tooltip("Base contact rate in contacts per real-time minute (Poisson process).")]
     [Min(0f)]
-    [SerializeField] private float baseContactsPerMinute = 0.2f;
+    [SerializeField] private float baseContactsPerMinute = 0.24f;
 
     [Tooltip("Minimum time between auto spawns (seconds).")]
     [Min(0f)]
-    [SerializeField] private float minAutoSpawnIntervalSeconds = 15f;
+    [SerializeField] private float minAutoSpawnIntervalSeconds = 12f;
 
     [Tooltip("Maximum time between auto spawns (seconds). 0 = no maximum.")]
     [Min(0f)]
-    [SerializeField] private float maxAutoSpawnIntervalSeconds = 0f;
+    [SerializeField] private float maxAutoSpawnIntervalSeconds = 55f;
 
     [Tooltip("If true, auto spawning pauses while awaiting a response choice.")]
     [SerializeField] private bool pauseAutoSpawnWhileAwaitingResponse = true;
@@ -117,17 +117,17 @@ public class UFOManager : MonoBehaviour
 
     [Tooltip("If >0, increases spawn rate with escalation pressure. 0.25 means +25% per pressure step.")]
     [Min(0f)]
-    [SerializeField] private float escalationRateMultiplierPerPressure = 0.20f;
+    [SerializeField] private float escalationRateMultiplierPerPressure = 0.16f;
 
     [Tooltip("If >0, increases spawn rate with PermitRisk. 0.5 means up to +50% at PermitRisk=100.")]
     [Min(0f)]
-    [SerializeField] private float permitRiskRateMultiplier = 0.35f;
+    [SerializeField] private float permitRiskRateMultiplier = 0.28f;
 
     [Header("Response")]
     [SerializeField] private bool enableResponseChoices = true;
     [Tooltip("Delay before showing the response choice after incident assessment (seconds).")]
     [Min(0f)]
-    [SerializeField] private float responseChoiceDelaySeconds = 2.0f;
+    [SerializeField] private float responseChoiceDelaySeconds = 1.2f;
     [Tooltip("How long the response choice stays active before it expires (seconds). 0 = never expires.")]
     [Min(0f)]
     [SerializeField] private float responseChoiceTimeoutSeconds = 26f;
@@ -147,11 +147,11 @@ public class UFOManager : MonoBehaviour
 
     [Tooltip("Education gain applied whenever an Education Bulletin is published.")]
     [Range(0f, 25f)]
-    [SerializeField] private float educationGainPerBulletin = 2f;
+    [SerializeField] private float educationGainPerBulletin = 1.5f;
 
     [Tooltip("Education gain applied on any incident assessment.")]
     [Range(0f, 10f)]
-    [SerializeField] private float educationGainPerIncident = 0.25f;
+    [SerializeField] private float educationGainPerIncident = 0.2f;
 
     [Header("Incident Rules")]
     [Tooltip("Base distribution for what this contact is (segment + intent).")]
@@ -159,7 +159,7 @@ public class UFOManager : MonoBehaviour
 
     [Tooltip("If the incident is smuggler-linked, probability that the crew tries to enforce the 'Cargo of Quiet Names' rule.")]
     [Range(0f, 1f)]
-    [SerializeField] private float quietCargoChanceWhenSmuggler = 0.85f;
+    [SerializeField] private float quietCargoChanceWhenSmuggler = 0.75f;
 
     [Header("Behavior Tells")]
     [Tooltip("Chance that a Dark contact is operating solo (lower risk posture).")]
@@ -180,7 +180,7 @@ public class UFOManager : MonoBehaviour
 
     [Tooltip("How long (real-time seconds) the soft-start ramp lasts.")]
     [Min(0f)]
-    [SerializeField] private float softStartDurationSeconds = 600f;
+    [SerializeField] private float softStartDurationSeconds = 480f;
 
     [Header("Lore")]
     [Tooltip("If enabled, publishes a one-time high-trust warning message on the first UFO contact to seed awareness/education.")]

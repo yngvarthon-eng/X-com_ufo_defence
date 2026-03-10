@@ -2063,7 +2063,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ResearchManager
   enableThinkingReflection: 0
-  thinkingDelaySeconds: 0.25
+  thinkingDelaySeconds: 0.15
 --- !u!114 &2044924457
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2086,28 +2086,28 @@ MonoBehaviour:
   destroyUfoVisualOnIntercept: 1
   interceptDestroyDelaySeconds: 1
   enableAutoSpawn: 1
-  baseContactsPerMinute: 0.2
-  minAutoSpawnIntervalSeconds: 15
-  maxAutoSpawnIntervalSeconds: 0
+  baseContactsPerMinute: 0.24
+  minAutoSpawnIntervalSeconds: 12
+  maxAutoSpawnIntervalSeconds: 55
   pauseAutoSpawnWhileAwaitingResponse: 1
   autoSpawnAreaCenter: {x: 0, y: 0, z: 0}
   autoSpawnAreaExtentsXZ: {x: 20, y: 20}
-  escalationRateMultiplierPerPressure: 0.2
-  permitRiskRateMultiplier: 0.35
+  escalationRateMultiplierPerPressure: 0.16
+  permitRiskRateMultiplier: 0.28
   enableResponseChoices: 1
   responseChoiceTimeoutSeconds: 26
   maxStoredContacts: 128
   education: 5
   permitRisk: 0
-  educationGainPerBulletin: 2
-  educationGainPerIncident: 0.25
+  educationGainPerBulletin: 1.5
+  educationGainPerIncident: 0.2
   contactOutcomeWeights: []
-  quietCargoChanceWhenSmuggler: 0.85
+  quietCargoChanceWhenSmuggler: 0.75
   darkSoloChance: 0.2
   darkCrewMin: 2
   darkCrewMax: 3
   enableSoftStart: 1
-  softStartDurationSeconds: 600
+  softStartDurationSeconds: 480
   publishPapalWarningOnFirstContact: 1
   papalWarningBody: 'A high-trust warning has been issued: unknown craft activity
     is linked to trafficking, coercion, and hostile influence.

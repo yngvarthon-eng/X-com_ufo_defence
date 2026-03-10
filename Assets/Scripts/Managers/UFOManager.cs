@@ -1603,6 +1603,12 @@ public class UFOManager : MonoBehaviour
             return true;
         }
 
+        // During disable/teardown Unity can assert on scene-wide Find calls.
+        if (!isActiveAndEnabled || !gameObject.scene.IsValid() || !gameObject.scene.isLoaded)
+        {
+            return false;
+        }
+
         var background = GameObject.Find("WorldMapBackground");
         if (background == null)
         {
@@ -1621,8 +1627,11 @@ public class UFOManager : MonoBehaviour
             return;
         }
 
-        if (!TryGetWorldMapBackgroundImage(out var image) || image == null)
+        // OnDisable can run while scene objects are deactivating; avoid Find() there.
+        var image = worldMapBackgroundImage;
+        if (image == null)
         {
+            hasCachedBackgroundAlpha = false;
             return;
         }
 

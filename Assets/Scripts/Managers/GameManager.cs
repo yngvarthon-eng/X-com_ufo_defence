@@ -39,6 +39,19 @@ public class GameManager : MonoBehaviour
     [SerializeField] private float permitRiskFailThreshold = 100f;
     [SerializeField] private bool pauseGameWhenMissionEnds = true;
 
+    [Header("Scoring")]
+    [SerializeField] private int responseScoreWeight = 150;
+    [SerializeField] private int contactScoreWeight = 25;
+    [SerializeField] private int educationScoreWeight = 12;
+    [SerializeField] private int missedResponsePenaltyWeight = 90;
+    [SerializeField] private int permitRiskPenaltyWeight = 9;
+    [SerializeField] private float fallbackTimeScoreMultiplier = 0.8f;
+
+    [Header("Medals")]
+    [SerializeField] private int bronzeScoreThreshold = 2500;
+    [SerializeField] private int silverScoreThreshold = 4200;
+    [SerializeField] private int goldScoreThreshold = 6200;
+
     private float missionElapsedSeconds;
     private bool missionEnded;
     private GameObject missionEndPanel;
@@ -51,6 +64,28 @@ public class GameManager : MonoBehaviour
     {
         Victory,
         PermitRiskFailure,
+    }
+
+    private enum MedalTier
+    {
+        None,
+        Bronze,
+        Silver,
+        Gold,
+    }
+
+    private void OnValidate()
+    {
+        responseScoreWeight = Mathf.Max(0, responseScoreWeight);
+        contactScoreWeight = Mathf.Max(0, contactScoreWeight);
+        educationScoreWeight = Mathf.Max(0, educationScoreWeight);
+        missedResponsePenaltyWeight = Mathf.Max(0, missedResponsePenaltyWeight);
+        permitRiskPenaltyWeight = Mathf.Max(0, permitRiskPenaltyWeight);
+        fallbackTimeScoreMultiplier = Mathf.Max(0f, fallbackTimeScoreMultiplier);
+
+        bronzeScoreThreshold = Mathf.Max(0, bronzeScoreThreshold);
+        silverScoreThreshold = Mathf.Max(bronzeScoreThreshold, silverScoreThreshold);
+        goldScoreThreshold = Mathf.Max(silverScoreThreshold, goldScoreThreshold);
     }
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
@@ -423,6 +458,14 @@ public class GameManager : MonoBehaviour
         var totalSeconds = Mathf.CeilToInt(timeRemaining);
         var minutes = totalSeconds / 60;
         var seconds = totalSeconds % 60;
+        var medalTier = GetMedalTier(score);
+        var nextMedalTarget = medalTier switch
+        {
+            MedalTier.None => bronzeScoreThreshold,
+            MedalTier.Bronze => silverScoreThreshold,
+            MedalTier.Silver => goldScoreThreshold,
+            _ => -1,
+        };
 
         if (ufo == null)
         {
@@ -435,10 +478,15 @@ public class GameManager : MonoBehaviour
         }
 
         var pausedSuffix = GameMenuController.IsPaused ? "  [PAUSED]" : string.Empty;
+        var medalText = MedalTierToLabel(medalTier);
+        var progressText = nextMedalTarget > 0
+            ? $"Next Medal At: {nextMedalTarget}"
+            : "Top Medal Reached";
         missionHudLabel.text =
             $"MISSION{pausedSuffix}\n" +
             $"Time Left: {minutes}:{seconds:00}  Score: {score}\n" +
-            $"Best: {bestScore}  Priority: {currentPriority}\n" +
+            $"Best: {bestScore}  Medal: {medalText}\n" +
+            $"Priority: {currentPriority}  {progressText}\n" +
             $"Contacts: {ufo.TotalContactsSpawned}  Responses: {ufo.RespondedContactsCount}  Missed: {ufo.ExpiredResponsesCount}\n" +
             $"Education: {Mathf.RoundToInt(ufo.Education)}  PermitRisk: {Mathf.RoundToInt(ufo.PermitRisk)}";
     }
@@ -447,18 +495,49 @@ public class GameManager : MonoBehaviour
     {
         if (ufo == null)
         {
-            var fallbackTime = Mathf.RoundToInt(missionElapsedSeconds * 0.8f);
+            var fallbackTime = Mathf.RoundToInt(missionElapsedSeconds * fallbackTimeScoreMultiplier);
             return Mathf.Max(0, fallbackTime);
         }
 
-        var baseScore = ufo.RespondedContactsCount * 150;
-        var contactCoverage = ufo.TotalContactsSpawned * 25;
-        var educationScore = Mathf.RoundToInt(ufo.Education * 12f);
-        var missPenalty = ufo.ExpiredResponsesCount * 90;
-        var riskPenalty = Mathf.RoundToInt(ufo.PermitRisk * 9f);
+        var baseScore = ufo.RespondedContactsCount * responseScoreWeight;
+        var contactCoverage = ufo.TotalContactsSpawned * contactScoreWeight;
+        var educationScore = Mathf.RoundToInt(ufo.Education * educationScoreWeight);
+        var missPenalty = ufo.ExpiredResponsesCount * missedResponsePenaltyWeight;
+        var riskPenalty = Mathf.RoundToInt(ufo.PermitRisk * permitRiskPenaltyWeight);
         var survivalBonus = Mathf.RoundToInt(Mathf.Min(missionElapsedSeconds, missionDurationSeconds));
 
         return Mathf.Max(0, baseScore + contactCoverage + educationScore + survivalBonus - missPenalty - riskPenalty);
+    }
+
+    private MedalTier GetMedalTier(int score)
+    {
+        if (score >= goldScoreThreshold)
+        {
+            return MedalTier.Gold;
+        }
+
+        if (score >= silverScoreThreshold)
+        {
+            return MedalTier.Silver;
+        }
+
+        if (score >= bronzeScoreThreshold)
+        {
+            return MedalTier.Bronze;
+        }
+
+        return MedalTier.None;
+    }
+
+    private static string MedalTierToLabel(MedalTier tier)
+    {
+        return tier switch
+        {
+            MedalTier.Gold => "Gold",
+            MedalTier.Silver => "Silver",
+            MedalTier.Bronze => "Bronze",
+            _ => "No Medal",
+        };
     }
 
     private void ShowMissionEndPanel(MissionEndReason reason, UFOManager ufo, int score, int bestScore, bool isNewBest)
@@ -516,14 +595,16 @@ public class GameManager : MonoBehaviour
         var resultLine = reason == MissionEndReason.Victory
             ? "You held the line until mission timer elapsed."
             : "Permit risk exceeded acceptable limits.";
+        var medalTier = GetMedalTier(score);
+        var medalText = MedalTierToLabel(medalTier);
 
         if (ufo == null)
         {
-            return $"{resultLine}\n\nTime: {elapsedMinutes}:{elapsedSecondsPart:00}\nScore: {score}\nBest: {bestScore}";
+            return $"{resultLine}\n\nTime: {elapsedMinutes}:{elapsedSecondsPart:00}\nScore: {score}\nMedal: {medalText}\nBest: {bestScore}";
         }
 
         var bestSuffix = isNewBest ? " (NEW)" : string.Empty;
-        return $"{resultLine}\n\nTime: {elapsedMinutes}:{elapsedSecondsPart:00}\nContacts: {ufo.TotalContactsSpawned}\nResponses: {ufo.RespondedContactsCount}\nMissed: {ufo.ExpiredResponsesCount}\nEducation: {Mathf.RoundToInt(ufo.Education)}\nPermitRisk: {Mathf.RoundToInt(ufo.PermitRisk)}\n\nScore: {score}\nBest: {bestScore}{bestSuffix}";
+        return $"{resultLine}\n\nTime: {elapsedMinutes}:{elapsedSecondsPart:00}\nContacts: {ufo.TotalContactsSpawned}\nResponses: {ufo.RespondedContactsCount}\nMissed: {ufo.ExpiredResponsesCount}\nEducation: {Mathf.RoundToInt(ufo.Education)}\nPermitRisk: {Mathf.RoundToInt(ufo.PermitRisk)}\n\nScore: {score}\nMedal: {medalText}\nBest: {bestScore}{bestSuffix}";
     }
 
     private static Text CreatePanelLabel(Transform parent, string name, string content, int fontSize, Vector2 anchoredPosition)

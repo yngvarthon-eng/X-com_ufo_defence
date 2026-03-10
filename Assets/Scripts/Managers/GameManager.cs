@@ -78,6 +78,7 @@ public class GameManager : MonoBehaviour
     private bool missionEnded;
     private GameObject missionEndPanel;
     private bool freeOpsMode;
+    private ProceduralAudioCuePlayer cuePlayer;
     private UFOManager cachedUfoManager;
     private int bestScore;
     private Text missionHudLabel;
@@ -217,6 +218,13 @@ public class GameManager : MonoBehaviour
         {
             gameObject.AddComponent<GameMenuController>();
         }
+
+        if (GetComponent<ProceduralAudioCuePlayer>() == null)
+        {
+            gameObject.AddComponent<ProceduralAudioCuePlayer>();
+        }
+
+        cuePlayer = GetComponent<ProceduralAudioCuePlayer>();
 
         bestScore = PlayerPrefs.GetInt(BestScorePrefKey, 0);
         TryApplyAutoLoadedState();
@@ -544,6 +552,21 @@ public class GameManager : MonoBehaviour
             bestScore = score;
             PlayerPrefs.SetInt(BestScorePrefKey, bestScore);
             PlayerPrefs.Save();
+        }
+
+        var medalTier = GetMedalTier(score);
+        if (cuePlayer != null)
+        {
+            if (reason == MissionEndReason.Victory)
+            {
+                cuePlayer.PlayMissionVictory();
+            }
+            else
+            {
+                cuePlayer.PlayMissionFailure();
+            }
+
+            cuePlayer.PlayMedalAward((int)medalTier);
         }
 
         if (missionHudPanel != null)

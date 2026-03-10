@@ -233,6 +233,7 @@ public class UFOManager : MonoBehaviour
     private float nextAutoSpawnAt;
     private int respondedContactsCount;
     private int expiredResponsesCount;
+    private ProceduralAudioCuePlayer cuePlayer;
 
     public float Education => education;
     public float PermitRisk => permitRisk;
@@ -273,6 +274,11 @@ public class UFOManager : MonoBehaviour
     private void Awake()
     {
         softStartBeganAt = Time.realtimeSinceStartup;
+        cuePlayer = GetComponent<ProceduralAudioCuePlayer>();
+        if (cuePlayer == null)
+        {
+            cuePlayer = UnityEngine.Object.FindAnyObjectByType<ProceduralAudioCuePlayer>();
+        }
 
         if (enableAutoSpawn)
         {
@@ -338,6 +344,7 @@ public class UFOManager : MonoBehaviour
     public void SpawnUFO(Vector3 position)
     {
         DebugLogUfoEvent("UFO spawned at " + position);
+        cuePlayer?.PlayUfoDetected();
 
         if (!publishUfoSpottedBoxes)
         {
@@ -1099,6 +1106,7 @@ public class UFOManager : MonoBehaviour
 
         hasPendingResponse = false;
         pendingLastCountdownSeconds = -1;
+        cuePlayer?.PlayResponseAccepted();
 
         StoreContactResponse(pendingContactId, choice);
         ApplyResponseEffects(pendingContactId, choice);
@@ -1214,6 +1222,7 @@ public class UFOManager : MonoBehaviour
         hasPendingResponse = false;
         pendingLastCountdownSeconds = -1;
         expiredResponsesCount++;
+        cuePlayer?.PlayResponseExpired();
 
         var queue = BoxMessageQueue.Instance != null ? BoxMessageQueue.Instance : UnityEngine.Object.FindAnyObjectByType<BoxMessageQueue>();
         if (queue == null)

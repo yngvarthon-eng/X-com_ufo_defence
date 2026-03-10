@@ -138,7 +138,7 @@ public class GameManager : MonoBehaviour
 
         // Keep the prompt visible and update it so you can re-choose.
         queue.UpdateBody(PickPriorityTriggerKey,
-            $"Pick a priority (press 1-3 anytime):\n1) Coverage\n2) Research\n3) Response\n\nCurrent: {choice}");
+            $"Strategic Priority (press 1-3 anytime):\n1) Coverage\n2) Research\n3) Response\n\nCurrent: {choice}\n\nTip: Use 1-4 on active contact prompts to choose response.");
     }
 
     private static bool TryGetPriorityChoice(out StrategicPriority choice)

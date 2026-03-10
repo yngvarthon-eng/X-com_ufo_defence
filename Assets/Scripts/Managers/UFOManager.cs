@@ -447,6 +447,13 @@ public class UFOManager : MonoBehaviour
         var startTime = Time.realtimeSinceStartup;
         while (ufoVisual != null)
         {
+            if (GameMenuController.IsPaused)
+            {
+                startTime += Time.unscaledDeltaTime;
+                yield return null;
+                continue;
+            }
+
             var elapsed = Time.realtimeSinceStartup - startTime;
             var t = Mathf.Clamp01(elapsed / lifeSeconds);
 
@@ -599,6 +606,11 @@ public class UFOManager : MonoBehaviour
 
     private void Update()
     {
+        if (GameMenuController.IsPaused)
+        {
+            return;
+        }
+
         TickAutoSpawn();
         TryHandleDebugSpawnHotkey();
 
@@ -1050,7 +1062,7 @@ public class UFOManager : MonoBehaviour
     {
         if (delaySeconds > 0f)
         {
-            yield return new WaitForSecondsRealtime(delaySeconds);
+            yield return WaitForGameplaySeconds(delaySeconds);
         }
 
         PublishResponseChoice(queue, contactId, position);
@@ -1886,7 +1898,7 @@ public class UFOManager : MonoBehaviour
 
         if (delaySeconds > 0f)
         {
-            yield return new WaitForSecondsRealtime(delaySeconds);
+            yield return WaitForGameplaySeconds(delaySeconds);
         }
 
         queue.Publish(new BoxMessage(
@@ -2146,7 +2158,7 @@ public class UFOManager : MonoBehaviour
     {
         if (thinkingDelaySeconds > 0f)
         {
-            yield return new WaitForSecondsRealtime(thinkingDelaySeconds);
+            yield return WaitForGameplaySeconds(thinkingDelaySeconds);
         }
 
         queue.Publish(new BoxMessage(
@@ -2156,6 +2168,20 @@ public class UFOManager : MonoBehaviour
             sourceTag: "Commander",
             title: "Pick a Priority",
             body: "Strategic Priority:\n1) Coverage\n2) Research\n3) Response\n\nTip: Use 1-4 when a contact response prompt is active."));
+    }
+
+    private IEnumerator WaitForGameplaySeconds(float seconds)
+    {
+        var remaining = Mathf.Max(0f, seconds);
+        while (remaining > 0f)
+        {
+            if (!GameMenuController.IsPaused)
+            {
+                remaining -= Time.unscaledDeltaTime;
+            }
+
+            yield return null;
+        }
     }
 
     [ContextMenu("Debug/Spot UFO")]

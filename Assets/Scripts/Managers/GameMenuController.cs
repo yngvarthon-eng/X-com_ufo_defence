@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
@@ -18,10 +19,39 @@ public class GameMenuController : MonoBehaviour
     }
 
     private GameObject menuPanel;
+    public static bool IsPaused { get; private set; }
+    public static event Action<bool> PauseStateChanged;
+
+    private bool menuForcedPause;
+    private GameObject statusToast;
+    private Text statusToastLabel;
+    private Coroutine statusToastCoroutine;
+    private RectTransform menuPanelRect;
+    private RectTransform menuToggleRect;
 
     private void Start()
     {
         BuildMenuUI();
+    }
+
+    private void Update()
+    {
+        if (!IsEscapePressedThisFrame())
+        {
+            TryCloseMenuFromOutsidePointerPress();
+            return;
+        }
+
+        ToggleMenuPanel();
+    }
+
+    private void OnDestroy()
+    {
+        if (statusToastCoroutine != null)
+        {
+            StopCoroutine(statusToastCoroutine);
+            statusToastCoroutine = null;
+        }
     }
 
     private void BuildMenuUI()
@@ -37,20 +67,24 @@ public class GameMenuController : MonoBehaviour
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
         scaler.referenceResolution = new Vector2(1920, 1080);
 
-        var menuToggle = CreateButton(canvasGo.transform, "MenuToggleButton", "Menu", new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-20f, -20f), new Vector2(140f, 40f));
+        var menuToggle = CreateButton(canvasGo.transform, "MenuToggleButton", "Menu", new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(-32f, -28f), new Vector2(120f, 40f));
+        menuToggleRect = menuToggle.GetComponent<RectTransform>();
+        menuToggleRect.pivot = new Vector2(1f, 1f);
         menuToggle.onClick.AddListener(ToggleMenuPanel);
+
+        CreateStatusToast(canvasGo.transform);
 
         menuPanel = new GameObject("GameMenuPanel", typeof(Image));
         menuPanel.transform.SetParent(canvasGo.transform, false);
         var panelImage = menuPanel.GetComponent<Image>();
         panelImage.color = new Color(0f, 0f, 0f, 0.72f);
 
-        var panelRect = menuPanel.GetComponent<RectTransform>();
-        panelRect.anchorMin = new Vector2(1f, 1f);
-        panelRect.anchorMax = new Vector2(1f, 1f);
-        panelRect.pivot = new Vector2(1f, 1f);
-        panelRect.anchoredPosition = new Vector2(-20f, -70f);
-        panelRect.sizeDelta = new Vector2(280f, 250f);
+        menuPanelRect = menuPanel.GetComponent<RectTransform>();
+        menuPanelRect.anchorMin = new Vector2(1f, 1f);
+        menuPanelRect.anchorMax = new Vector2(1f, 1f);
+        menuPanelRect.pivot = new Vector2(1f, 1f);
+        menuPanelRect.anchoredPosition = new Vector2(-20f, -70f);
+        menuPanelRect.sizeDelta = new Vector2(280f, 250f);
 
         var newGameButton = CreateButton(menuPanel.transform, "NewGameButton", "New Game", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -30f), new Vector2(240f, 42f));
         newGameButton.onClick.AddListener(NewGame);
@@ -111,7 +145,7 @@ public class GameMenuController : MonoBehaviour
             return;
         }
 
-        menuPanel.SetActive(!menuPanel.activeSelf);
+        SetMenuVisible(!menuPanel.activeSelf);
     }
 
     private void SaveGame()
@@ -131,6 +165,7 @@ public class GameMenuController : MonoBehaviour
         PlayerPrefs.Save();
 
         Debug.Log($"[Menu] Game saved. {json}");
+        ShowStatusToast("Game saved");
     }
 
     private void LoadGame()
@@ -138,6 +173,7 @@ public class GameMenuController : MonoBehaviour
         if (!PlayerPrefs.HasKey(SaveSlotKey))
         {
             Debug.LogWarning("[Menu] No save game found.");
+            ShowStatusToast("No save found");
             return;
         }
 
@@ -145,6 +181,7 @@ public class GameMenuController : MonoBehaviour
         if (string.IsNullOrWhiteSpace(json))
         {
             Debug.LogWarning("[Menu] Save slot is empty.");
+            ShowStatusToast("Save slot empty");
             return;
         }
 
@@ -153,7 +190,7 @@ public class GameMenuController : MonoBehaviour
         PlayerPrefs.SetInt(MapStylePrefKey, data.mapStyleIndex);
         PlayerPrefs.Save();
 
-        Time.timeScale = 1f;
+        SetPaused(false);
         SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
     }
 
@@ -164,8 +201,207 @@ public class GameMenuController : MonoBehaviour
         PlayerPrefs.DeleteKey(MapStylePrefKey);
         PlayerPrefs.Save();
 
-        Time.timeScale = 1f;
+        SetPaused(false);
         SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+    }
+
+    public static void TogglePause()
+    {
+        SetPaused(!IsPaused);
+    }
+
+    public static void SetPaused(bool paused)
+    {
+        if (IsPaused == paused)
+        {
+            return;
+        }
+
+        IsPaused = paused;
+        Time.timeScale = paused ? 0f : 1f;
+        AudioListener.pause = paused;
+        PauseStateChanged?.Invoke(IsPaused);
+    }
+
+    private void SetMenuVisible(bool visible)
+    {
+        if (menuPanel == null || menuPanel.activeSelf == visible)
+        {
+            return;
+        }
+
+        menuPanel.SetActive(visible);
+
+        if (visible)
+        {
+            menuForcedPause = !IsPaused;
+            if (menuForcedPause)
+            {
+                SetPaused(true);
+            }
+        }
+        else
+        {
+            if (menuForcedPause)
+            {
+                SetPaused(false);
+            }
+
+            menuForcedPause = false;
+        }
+    }
+
+    private void CreateStatusToast(Transform parent)
+    {
+        statusToast = new GameObject("MenuStatusToast", typeof(Image));
+        statusToast.transform.SetParent(parent, false);
+
+        var image = statusToast.GetComponent<Image>();
+        image.color = new Color(0f, 0f, 0f, 0.76f);
+
+        var rect = statusToast.GetComponent<RectTransform>();
+        rect.anchorMin = new Vector2(1f, 1f);
+        rect.anchorMax = new Vector2(1f, 1f);
+        rect.pivot = new Vector2(1f, 1f);
+        rect.anchoredPosition = new Vector2(-32f, -78f);
+        rect.sizeDelta = new Vector2(220f, 32f);
+
+        var labelGo = new GameObject("Label", typeof(Text));
+        labelGo.transform.SetParent(statusToast.transform, false);
+
+        var labelRect = labelGo.GetComponent<RectTransform>();
+        labelRect.anchorMin = Vector2.zero;
+        labelRect.anchorMax = Vector2.one;
+        labelRect.offsetMin = new Vector2(8f, 2f);
+        labelRect.offsetMax = new Vector2(-8f, -2f);
+
+        statusToastLabel = labelGo.GetComponent<Text>();
+        var font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf") ?? Resources.GetBuiltinResource<Font>("Arial.ttf");
+        statusToastLabel.font = font;
+        statusToastLabel.fontSize = 16;
+        statusToastLabel.alignment = TextAnchor.MiddleCenter;
+        statusToastLabel.color = new Color(1f, 1f, 1f, 1f);
+        statusToastLabel.text = string.Empty;
+
+        statusToast.SetActive(false);
+    }
+
+    private void ShowStatusToast(string message, float seconds = 1.6f)
+    {
+        if (statusToast == null || statusToastLabel == null)
+        {
+            return;
+        }
+
+        statusToastLabel.text = message;
+        statusToast.SetActive(true);
+
+        if (statusToastCoroutine != null)
+        {
+            StopCoroutine(statusToastCoroutine);
+        }
+
+        statusToastCoroutine = StartCoroutine(HideToastAfterDelay(seconds));
+    }
+
+    private IEnumerator HideToastAfterDelay(float seconds)
+    {
+        yield return new WaitForSecondsRealtime(Mathf.Max(0.1f, seconds));
+
+        if (statusToast != null)
+        {
+            statusToast.SetActive(false);
+        }
+
+        statusToastCoroutine = null;
+    }
+
+    private static bool IsEscapePressedThisFrame()
+    {
+#if ENABLE_INPUT_SYSTEM
+        var keyboard = UnityEngine.InputSystem.Keyboard.current;
+        if (keyboard != null && keyboard.escapeKey.wasPressedThisFrame)
+        {
+            return true;
+        }
+#endif
+
+#if ENABLE_LEGACY_INPUT_MANAGER
+        if (Input.GetKeyDown(KeyCode.Escape))
+        {
+            return true;
+        }
+#endif
+
+        return false;
+    }
+
+    private void TryCloseMenuFromOutsidePointerPress()
+    {
+        if (menuPanel == null || !menuPanel.activeSelf)
+        {
+            return;
+        }
+
+        if (!TryGetPointerPressedScreenPosition(out var screenPosition))
+        {
+            return;
+        }
+
+        if (IsScreenPointInside(menuPanelRect, screenPosition) || IsScreenPointInside(menuToggleRect, screenPosition))
+        {
+            return;
+        }
+
+        SetMenuVisible(false);
+    }
+
+    private static bool IsScreenPointInside(RectTransform rect, Vector2 screenPosition)
+    {
+        return rect != null && RectTransformUtility.RectangleContainsScreenPoint(rect, screenPosition, null);
+    }
+
+    private static bool TryGetPointerPressedScreenPosition(out Vector2 screenPosition)
+    {
+#if ENABLE_INPUT_SYSTEM
+        var touchScreen = UnityEngine.InputSystem.Touchscreen.current;
+        if (touchScreen != null && touchScreen.primaryTouch.press.wasPressedThisFrame)
+        {
+            screenPosition = touchScreen.primaryTouch.position.ReadValue();
+            return true;
+        }
+
+        var mouse = UnityEngine.InputSystem.Mouse.current;
+        if (mouse != null && mouse.leftButton.wasPressedThisFrame)
+        {
+            screenPosition = mouse.position.ReadValue();
+            return true;
+        }
+#endif
+
+#if ENABLE_LEGACY_INPUT_MANAGER
+        if (Input.touchCount > 0)
+        {
+            for (var i = 0; i < Input.touchCount; i++)
+            {
+                var touch = Input.GetTouch(i);
+                if (touch.phase == TouchPhase.Began)
+                {
+                    screenPosition = touch.position;
+                    return true;
+                }
+            }
+        }
+
+        if (Input.GetMouseButtonDown(0))
+        {
+            screenPosition = Input.mousePosition;
+            return true;
+        }
+#endif
+
+        screenPosition = default;
+        return false;
     }
 
     private static void QuitGame()

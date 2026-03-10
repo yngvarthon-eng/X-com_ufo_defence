@@ -88,6 +88,8 @@ public class WorldMapBackgroundManager : MonoBehaviour
             pausePlayButton.onClick.AddListener(TogglePausePlay);
             RefreshPausePlayButtonLabel();
         }
+
+        GameMenuController.PauseStateChanged += HandlePauseStateChanged;
     }
 
     private void OnDestroy()
@@ -112,6 +114,13 @@ public class WorldMapBackgroundManager : MonoBehaviour
         {
             pausePlayButton.onClick.RemoveListener(TogglePausePlay);
         }
+
+        GameMenuController.PauseStateChanged -= HandlePauseStateChanged;
+    }
+
+    private void HandlePauseStateChanged(bool _)
+    {
+        RefreshPausePlayButtonLabel();
     }
 
     private void OnValidate()
@@ -280,8 +289,7 @@ public class WorldMapBackgroundManager : MonoBehaviour
 
     private void TogglePausePlay()
     {
-        var paused = Time.timeScale <= 0.001f;
-        Time.timeScale = paused ? 1f : 0f;
+        GameMenuController.TogglePause();
         RefreshPausePlayButtonLabel();
     }
 
@@ -292,7 +300,7 @@ public class WorldMapBackgroundManager : MonoBehaviour
             return;
         }
 
-        var isPaused = Time.timeScale <= 0.001f;
+        var isPaused = GameMenuController.IsPaused;
         var label = isPaused ? "Play" : "Pause";
 
         var tmp = pausePlayButton.GetComponentInChildren<TMP_Text>(includeInactive: true);

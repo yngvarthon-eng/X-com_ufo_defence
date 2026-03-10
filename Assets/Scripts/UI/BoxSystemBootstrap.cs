@@ -55,27 +55,6 @@ namespace XCon.UI.Boxes
             view.BuildUI();
 
             root.AddComponent<BoxDebugHotkeys>();
-
-#if UNITY_EDITOR
-            // Make it obvious (even if Console is filtered) that the system is alive.
-            var queue = root.GetComponent<BoxMessageQueue>();
-            if (queue != null)
-            {
-                const string readyKey = "debug/boxsystem/ready";
-
-                queue.Publish(new BoxMessage(
-                    triggerKey: "debug/boxsystem/ready",
-                    channel: BoxChannel.Info,
-                    severity: BoxSeverity.Info,
-                    sourceTag: "System",
-                    title: "BoxSystem Ready",
-                    body: "Press 1/2/3 (or F1/F2/F3). Esc to dismiss."));
-
-                // Don't let the Ready message block subsequent hotkey messages.
-                var autoDismiss = root.AddComponent<BoxAutoDismissCurrentMessage>();
-                autoDismiss.Configure(queue, readyKey, delaySeconds: 2.0f);
-            }
-#endif
         }
     }
 

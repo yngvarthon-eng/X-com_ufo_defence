@@ -330,9 +330,9 @@ public class UFOManager : MonoBehaviour
         TrySpawnUfoVisual(contactId, position);
 
         queue.Publish(new BoxMessage(
-            triggerKey: "ufo/spotted",
+            triggerKey: $"ufo/spotted/{contactId}",
             channel: BoxChannel.Info,
-            severity: BoxSeverity.Warn,
+            severity: BoxSeverity.Info,
             sourceTag: "Radar",
             title: "UFO Spotted",
             body: $"Contact #{contactId}\nUFO sighted at {position}."));

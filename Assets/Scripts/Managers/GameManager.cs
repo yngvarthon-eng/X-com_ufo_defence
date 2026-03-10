@@ -50,6 +50,7 @@ public class GameManager : MonoBehaviour
         public int totalContactsSpawned;
         public int respondedContactsCount;
         public int expiredResponsesCount;
+        public int consecutiveExpiredResponsesCount;
         public string commanderName;
     }
 
@@ -60,6 +61,9 @@ public class GameManager : MonoBehaviour
     [Range(10f, 100f)]
     [SerializeField] private float permitRiskFailThreshold = 100f;
     [SerializeField] private bool pauseGameWhenMissionEnds = true;
+    [SerializeField] private bool enableConsecutiveExpireFail = true;
+    [Min(1)]
+    [SerializeField] private int consecutiveExpireFailThreshold = 3;
 
     [Header("Scoring")]
     [SerializeField] private int responseScoreWeight = 150;
@@ -92,6 +96,7 @@ public class GameManager : MonoBehaviour
     {
         Victory,
         PermitRiskFailure,
+        ConsecutiveExpireFailure,
     }
 
     private enum MedalTier
@@ -106,6 +111,7 @@ public class GameManager : MonoBehaviour
     {
         missionDurationSeconds = Mathf.Max(30f, missionDurationSeconds);
         permitRiskFailThreshold = Mathf.Clamp(permitRiskFailThreshold, 10f, 100f);
+        consecutiveExpireFailThreshold = Mathf.Max(1, consecutiveExpireFailThreshold);
 
         responseScoreWeight = Mathf.Max(0, responseScoreWeight);
         contactScoreWeight = Mathf.Max(0, contactScoreWeight);
@@ -337,7 +343,8 @@ public class GameManager : MonoBehaviour
                 state.permitRisk,
                 state.totalContactsSpawned,
                 state.respondedContactsCount,
-                state.expiredResponsesCount);
+                state.expiredResponsesCount,
+                state.consecutiveExpiredResponsesCount);
         }
     }
 
@@ -520,6 +527,12 @@ public class GameManager : MonoBehaviour
         if (ufo != null && ufo.PermitRisk >= permitRiskFailThreshold)
         {
             EndMission(MissionEndReason.PermitRiskFailure, ufo);
+            return;
+        }
+
+        if (ufo != null && enableConsecutiveExpireFail && ufo.ConsecutiveExpiredResponsesCount >= consecutiveExpireFailThreshold)
+        {
+            EndMission(MissionEndReason.ConsecutiveExpireFailure, ufo);
             return;
         }
 
@@ -811,7 +824,9 @@ public class GameManager : MonoBehaviour
 
         var resultLine = reason == MissionEndReason.Victory
             ? "You held the line until mission timer elapsed."
-            : "Permit risk exceeded acceptable limits.";
+            : reason == MissionEndReason.ConsecutiveExpireFailure
+                ? "Command tempo collapsed from repeated missed responses."
+                : "Permit risk exceeded acceptable limits.";
         var medalTier = GetMedalTier(score);
         var medalText = MedalTierToLabel(medalTier);
 

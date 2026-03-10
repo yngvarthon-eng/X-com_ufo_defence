@@ -233,6 +233,7 @@ public class UFOManager : MonoBehaviour
     private float nextAutoSpawnAt;
     private int respondedContactsCount;
     private int expiredResponsesCount;
+    private int consecutiveExpiredResponsesCount;
     private ProceduralAudioCuePlayer cuePlayer;
 
     public float Education => education;
@@ -240,8 +241,9 @@ public class UFOManager : MonoBehaviour
     public int TotalContactsSpawned => nextContactId;
     public int RespondedContactsCount => respondedContactsCount;
     public int ExpiredResponsesCount => expiredResponsesCount;
+    public int ConsecutiveExpiredResponsesCount => consecutiveExpiredResponsesCount;
 
-    public void ApplyPersistentState(float loadedEducation, float loadedPermitRisk, int loadedTotalContacts, int loadedRespondedContacts, int loadedExpiredResponses)
+    public void ApplyPersistentState(float loadedEducation, float loadedPermitRisk, int loadedTotalContacts, int loadedRespondedContacts, int loadedExpiredResponses, int loadedConsecutiveExpiredResponses)
     {
         education = Mathf.Clamp(loadedEducation, 0f, 100f);
         permitRisk = Mathf.Clamp(loadedPermitRisk, 0f, 100f);
@@ -249,6 +251,7 @@ public class UFOManager : MonoBehaviour
         nextContactId = Mathf.Max(0, loadedTotalContacts);
         respondedContactsCount = Mathf.Clamp(loadedRespondedContacts, 0, nextContactId);
         expiredResponsesCount = Mathf.Clamp(loadedExpiredResponses, 0, nextContactId);
+        consecutiveExpiredResponsesCount = Mathf.Clamp(loadedConsecutiveExpiredResponses, 0, nextContactId);
 
         // Loaded sessions are reconstructed from aggregate stats, so clear prior contact detail caches.
         contactRecordsById.Clear();
@@ -1106,6 +1109,7 @@ public class UFOManager : MonoBehaviour
 
         hasPendingResponse = false;
         pendingLastCountdownSeconds = -1;
+        consecutiveExpiredResponsesCount = 0;
         cuePlayer?.PlayResponseAccepted();
 
         StoreContactResponse(pendingContactId, choice);
@@ -1222,6 +1226,7 @@ public class UFOManager : MonoBehaviour
         hasPendingResponse = false;
         pendingLastCountdownSeconds = -1;
         expiredResponsesCount++;
+        consecutiveExpiredResponsesCount++;
         cuePlayer?.PlayResponseExpired();
 
         var queue = BoxMessageQueue.Instance != null ? BoxMessageQueue.Instance : UnityEngine.Object.FindAnyObjectByType<BoxMessageQueue>();

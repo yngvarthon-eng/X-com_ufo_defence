@@ -134,7 +134,7 @@ public class WorldMapBackgroundManager : MonoBehaviour
     private void OnValidate()
     {
         normalizedCoverageZoom = Mathf.Clamp(normalizedCoverageZoom, 0.8f, 1.4f);
-        ApplyLayoutSettings();
+        ApplyLayoutSettings(allowRectTransformWrites: false);
     }
 
     private void OnMapDropdownChanged(int index)
@@ -198,7 +198,7 @@ public class WorldMapBackgroundManager : MonoBehaviour
         fadeTransitionCoroutine = StartCoroutine(FadeToSprite(selectedSprite));
     }
 
-    private void ApplyLayoutSettings()
+    private void ApplyLayoutSettings(bool allowRectTransformWrites = true)
     {
         if (backgroundImage == null)
         {
@@ -234,7 +234,10 @@ public class WorldMapBackgroundManager : MonoBehaviour
             }
         }
 
-        ApplyCoverageNormalization();
+        if (allowRectTransformWrites)
+        {
+            ApplyCoverageNormalization();
+        }
     }
 
     private void ResolveReferences()

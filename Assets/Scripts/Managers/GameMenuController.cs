@@ -22,6 +22,7 @@ public class GameMenuController : MonoBehaviour
         public int totalContactsSpawned;
         public int respondedContactsCount;
         public int expiredResponsesCount;
+        public int consecutiveExpiredResponsesCount;
         public string commanderName;
         public string savedAtUtc;
     }
@@ -346,6 +347,7 @@ public class GameMenuController : MonoBehaviour
             totalContactsSpawned = ufo != null ? ufo.TotalContactsSpawned : 0,
             respondedContactsCount = ufo != null ? ufo.RespondedContactsCount : 0,
             expiredResponsesCount = ufo != null ? ufo.ExpiredResponsesCount : 0,
+            consecutiveExpiredResponsesCount = ufo != null ? ufo.ConsecutiveExpiredResponsesCount : 0,
             commanderName = manager != null ? manager.CommanderName : string.Empty,
             savedAtUtc = DateTime.UtcNow.ToString("O")
         };
@@ -389,6 +391,7 @@ public class GameMenuController : MonoBehaviour
             totalContactsSpawned = data.totalContactsSpawned,
             respondedContactsCount = data.respondedContactsCount,
             expiredResponsesCount = data.expiredResponsesCount,
+            consecutiveExpiredResponsesCount = data.consecutiveExpiredResponsesCount,
             commanderName = data.commanderName,
         };
 

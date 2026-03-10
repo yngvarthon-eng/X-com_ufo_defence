@@ -6,11 +6,18 @@ using TMPro;
 
 public class WorldMapBackgroundManager : MonoBehaviour
 {
+    private enum GuideLineOrientation
+    {
+        Horizontal,
+        Vertical,
+    }
+
     private const int DefaultMapIndex = 0;
     private const string BackgroundObjectName = "WorldMapBackground";
     private const string DropdownObjectName = "Map Style Selector";
     private const string ResetButtonObjectName = "MapSelectorButton";
     private const string PausePlayButtonObjectName = "PausePlayButton";
+    private const string VolumeButtonObjectName = "VolumeButton";
     private const string MapStylePrefKey = "xcon.worldmap.styleIndex";
 
     [Header("World Map Sprites")]
@@ -23,6 +30,7 @@ public class WorldMapBackgroundManager : MonoBehaviour
     [SerializeField] private Dropdown mapDropdown;
     [SerializeField] private Button resetMapStyleButton;
     [SerializeField] private Button pausePlayButton;
+    [SerializeField] private Button volumeButton;
 
     [Header("Transitions")]
     [SerializeField] private bool enableFadeTransitions = true;
@@ -49,16 +57,33 @@ public class WorldMapBackgroundManager : MonoBehaviour
     [Range(0.8f, 1.4f)]
     [SerializeField] private float normalizedCoverageZoom = 1.02f;
 
+    [Header("Guide Line")]
+    [SerializeField] private bool showCenterGuideLine = true;
+    [SerializeField] private GuideLineOrientation guideLineOrientation = GuideLineOrientation.Horizontal;
+    [Range(0f, 40f)]
+    [SerializeField] private float guideLineCurvature = 10f;
+    [Range(1f, 12f)]
+    [SerializeField] private float guideLineThickness = 2f;
+    [Range(0.2f, 1f)]
+    [SerializeField] private float guideLineLengthNormalized = 0.92f;
+    [SerializeField] private Color guideLineColor = new Color(0.9f, 0.95f, 1f, 0.55f);
+    [SerializeField] private Color guideTopTint = new Color(1f, 1f, 1f, 0.12f);
+    [SerializeField] private Color guideBottomTint = new Color(0f, 0f, 0f, 0.16f);
+
     private Dictionary<int, Sprite> mapOptions;
     private Coroutine fadeTransitionCoroutine;
     private int currentMapIndex = -1;
     private AspectRatioFitter aspectRatioFitter;
+    private Image centerGuideLineImage;
+    private Sprite centerGuideLineSprite;
 
     void Awake()
     {
         ResolveReferences();
         EnsurePausePlayButtonExists();
+        EnsureVolumeButtonExists();
         ApplyLayoutSettings();
+        RefreshCenterGuideLine();
 
         mapOptions = new Dictionary<int, Sprite>
         {
@@ -97,6 +122,12 @@ public class WorldMapBackgroundManager : MonoBehaviour
             RefreshPausePlayButtonLabel();
         }
 
+        if (volumeButton != null)
+        {
+            volumeButton.onClick.AddListener(CycleSfxVolume);
+            RefreshVolumeButtonLabel();
+        }
+
         GameMenuController.PauseStateChanged += HandlePauseStateChanged;
     }
 
@@ -123,7 +154,18 @@ public class WorldMapBackgroundManager : MonoBehaviour
             pausePlayButton.onClick.RemoveListener(TogglePausePlay);
         }
 
+        if (volumeButton != null)
+        {
+            volumeButton.onClick.RemoveListener(CycleSfxVolume);
+        }
+
         GameMenuController.PauseStateChanged -= HandlePauseStateChanged;
+
+        if (centerGuideLineSprite != null)
+        {
+            Destroy(centerGuideLineSprite);
+            centerGuideLineSprite = null;
+        }
     }
 
     private void HandlePauseStateChanged(bool _)
@@ -134,7 +176,15 @@ public class WorldMapBackgroundManager : MonoBehaviour
     private void OnValidate()
     {
         normalizedCoverageZoom = Mathf.Clamp(normalizedCoverageZoom, 0.8f, 1.4f);
+        guideLineCurvature = Mathf.Clamp(guideLineCurvature, 0f, 40f);
+        guideLineThickness = Mathf.Clamp(guideLineThickness, 1f, 12f);
+        guideLineLengthNormalized = Mathf.Clamp(guideLineLengthNormalized, 0.2f, 1f);
         ApplyLayoutSettings(allowRectTransformWrites: false);
+
+        if (Application.isPlaying)
+        {
+            RefreshCenterGuideLine();
+        }
     }
 
     private void OnMapDropdownChanged(int index)
@@ -277,6 +327,15 @@ public class WorldMapBackgroundManager : MonoBehaviour
                 pausePlayButton = pauseButtonObject.GetComponent<Button>();
             }
         }
+
+        if (volumeButton == null)
+        {
+            var volumeButtonObject = GameObject.Find(VolumeButtonObjectName);
+            if (volumeButtonObject != null)
+            {
+                volumeButton = volumeButtonObject.GetComponent<Button>();
+            }
+        }
     }
 
     private void EnsurePausePlayButtonExists()
@@ -304,6 +363,37 @@ public class WorldMapBackgroundManager : MonoBehaviour
         RefreshPausePlayButtonLabel();
     }
 
+    private void EnsureVolumeButtonExists()
+    {
+        if (volumeButton != null)
+        {
+            return;
+        }
+
+        var templateButton = pausePlayButton != null ? pausePlayButton : resetMapStyleButton;
+        if (templateButton == null)
+        {
+            return;
+        }
+
+        var template = templateButton.gameObject;
+        var clone = Instantiate(template, template.transform.parent);
+        clone.name = VolumeButtonObjectName;
+
+        if (clone.TryGetComponent<RectTransform>(out var cloneRect)
+            && template.TryGetComponent<RectTransform>(out var templateRect))
+        {
+            cloneRect.anchorMin = templateRect.anchorMin;
+            cloneRect.anchorMax = templateRect.anchorMax;
+            cloneRect.pivot = templateRect.pivot;
+            cloneRect.sizeDelta = templateRect.sizeDelta;
+            cloneRect.anchoredPosition = templateRect.anchoredPosition + new Vector2(0f, 38f);
+        }
+
+        volumeButton = clone.GetComponent<Button>();
+        RefreshVolumeButtonLabel();
+    }
+
     private void TogglePausePlay()
     {
         GameMenuController.TogglePause();
@@ -328,6 +418,67 @@ public class WorldMapBackgroundManager : MonoBehaviour
         }
 
         var legacyText = pausePlayButton.GetComponentInChildren<Text>(includeInactive: true);
+        if (legacyText != null)
+        {
+            legacyText.text = label;
+        }
+    }
+
+    private void CycleSfxVolume()
+    {
+        var cuePlayer = UnityEngine.Object.FindAnyObjectByType<ProceduralAudioCuePlayer>();
+        var current = cuePlayer != null ? cuePlayer.GetSfxVolume() : PlayerPrefs.GetFloat("xcon.audio.sfxVolume", 0.22f);
+
+        var next = 1f;
+        if (current > 0.75f)
+        {
+            next = 0f;
+        }
+        else if (current > 0.5f)
+        {
+            next = 0.75f;
+        }
+        else if (current > 0.25f)
+        {
+            next = 0.5f;
+        }
+        else if (current > 0.01f)
+        {
+            next = 0.25f;
+        }
+
+        if (cuePlayer != null)
+        {
+            cuePlayer.SetSfxVolume(next, persist: true);
+        }
+        else
+        {
+            PlayerPrefs.SetFloat("xcon.audio.sfxVolume", Mathf.Clamp01(next));
+            PlayerPrefs.Save();
+        }
+
+        RefreshVolumeButtonLabel();
+    }
+
+    private void RefreshVolumeButtonLabel()
+    {
+        if (volumeButton == null)
+        {
+            return;
+        }
+
+        var cuePlayer = UnityEngine.Object.FindAnyObjectByType<ProceduralAudioCuePlayer>();
+        var volume = cuePlayer != null ? cuePlayer.GetSfxVolume() : PlayerPrefs.GetFloat("xcon.audio.sfxVolume", 0.22f);
+        var label = $"Vol {Mathf.RoundToInt(Mathf.Clamp01(volume) * 100f)}%";
+
+        var tmp = volumeButton.GetComponentInChildren<TMP_Text>(includeInactive: true);
+        if (tmp != null)
+        {
+            tmp.text = label;
+            return;
+        }
+
+        var legacyText = volumeButton.GetComponentInChildren<Text>(includeInactive: true);
         if (legacyText != null)
         {
             legacyText.text = label;
@@ -515,5 +666,129 @@ public class WorldMapBackgroundManager : MonoBehaviour
         color.a = 1f;
         backgroundImage.color = color;
         fadeTransitionCoroutine = null;
+    }
+
+    private void RefreshCenterGuideLine()
+    {
+        if (!showCenterGuideLine)
+        {
+            if (centerGuideLineImage != null)
+            {
+                centerGuideLineImage.gameObject.SetActive(false);
+            }
+
+            return;
+        }
+
+        EnsureCenterGuideLineExists();
+        if (centerGuideLineImage == null)
+        {
+            return;
+        }
+
+        if (centerGuideLineSprite != null)
+        {
+            Destroy(centerGuideLineSprite);
+            centerGuideLineSprite = null;
+        }
+
+        centerGuideLineSprite = CreateCurvedGuideLineSprite();
+        centerGuideLineImage.sprite = centerGuideLineSprite;
+        centerGuideLineImage.color = Color.white;
+        centerGuideLineImage.gameObject.SetActive(true);
+
+        if (!centerGuideLineImage.TryGetComponent<RectTransform>(out var rect))
+        {
+            return;
+        }
+
+        rect.anchorMin = new Vector2(0.5f, 0.5f);
+        rect.anchorMax = new Vector2(0.5f, 0.5f);
+        rect.pivot = new Vector2(0.5f, 0.5f);
+        rect.anchoredPosition = Vector2.zero;
+
+        rect.anchorMin = Vector2.zero;
+        rect.anchorMax = Vector2.one;
+        rect.offsetMin = Vector2.zero;
+        rect.offsetMax = Vector2.zero;
+        rect.localRotation = Quaternion.identity;
+        rect.localScale = Vector3.one;
+    }
+
+    private void EnsureCenterGuideLineExists()
+    {
+        if (centerGuideLineImage != null)
+        {
+            return;
+        }
+
+        Transform parent = null;
+        if (backgroundImage != null)
+        {
+            parent = backgroundImage.transform.parent;
+        }
+        else if (pausePlayButton != null)
+        {
+            parent = pausePlayButton.transform.parent;
+        }
+
+        if (parent == null)
+        {
+            return;
+        }
+
+        var go = new GameObject("CenterGuideLine", typeof(Image));
+        go.transform.SetParent(parent, false);
+        centerGuideLineImage = go.GetComponent<Image>();
+        centerGuideLineImage.raycastTarget = false;
+    }
+
+    private Sprite CreateCurvedGuideLineSprite()
+    {
+        const int width = 1024;
+        const int height = 1024;
+        var tex = new Texture2D(width, height, TextureFormat.RGBA32, false);
+        tex.wrapMode = TextureWrapMode.Clamp;
+        tex.filterMode = FilterMode.Bilinear;
+
+        var thicknessPx = Mathf.Max(1f, guideLineThickness * 1.25f);
+        var curveNorm = (guideLineCurvature / 40f) * 0.24f;
+        var lineColor = guideLineColor;
+        var topTint = guideTopTint;
+        var bottomTint = guideBottomTint;
+
+        for (var y = 0; y < height; y++)
+        {
+            for (var x = 0; x < width; x++)
+            {
+                var nx = (x / (float)(width - 1)) * 2f - 1f;
+                var ny = (y / (float)(height - 1)) * 2f - 1f;
+
+                float signedDistPx;
+                if (guideLineOrientation == GuideLineOrientation.Horizontal)
+                {
+                    var yCurveNorm = curveNorm * (nx * nx - 1f);
+                    signedDistPx = (ny - yCurveNorm) * (height * 0.5f);
+                }
+                else
+                {
+                    var xCurveNorm = curveNorm * (ny * ny - 1f);
+                    signedDistPx = (nx - xCurveNorm) * (width * 0.5f);
+                }
+
+                var baseColor = signedDistPx > 0f ? topTint : bottomTint;
+                var absDistPx = Mathf.Abs(signedDistPx);
+                if (absDistPx <= thicknessPx)
+                {
+                    var t = Mathf.Clamp01(absDistPx / thicknessPx);
+                    baseColor = Color.Lerp(lineColor, baseColor, t);
+                }
+
+                tex.SetPixel(x, y, baseColor);
+            }
+        }
+
+        tex.Apply();
+        return Sprite.Create(tex, new Rect(0f, 0f, width, height), new Vector2(0.5f, 0.5f), 100f);
     }
 }

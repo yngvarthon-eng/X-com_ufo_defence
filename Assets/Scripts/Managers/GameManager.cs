@@ -25,6 +25,7 @@ public class GameManager : MonoBehaviour
     public StrategicPriority CurrentPriority => currentPriority;
 
     private const string PickPriorityTriggerKey = "thinking/pick_priority";
+    private const string WelcomeTriggerKey = "thinking/welcome_intro";
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
     private static void EnsureExists()
@@ -143,7 +144,7 @@ public class GameManager : MonoBehaviour
         }
 
         queue.Publish(new BoxMessage(
-            triggerKey: PickPriorityTriggerKey,
+            triggerKey: WelcomeTriggerKey,
             channel: BoxChannel.Thinking,
             severity: BoxSeverity.Info,
             sourceTag: "Commander",

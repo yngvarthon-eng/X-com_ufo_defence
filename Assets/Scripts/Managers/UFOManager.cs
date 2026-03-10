@@ -2098,15 +2098,8 @@ public class UFOManager : MonoBehaviour
             channel: BoxChannel.Thinking,
             severity: BoxSeverity.Info,
             sourceTag: "Commander",
-            title: "Welcome, Commander",
-            body:
-                "Welcome to X-Con U.F.O Defence.\n" +
-                "Your mission is to detect contacts, assess incidents, and choose the right response before threats escalate.\n\n" +
-                "Core controls:\n" +
-                "1-3: Strategic Priority (Coverage / Research / Response)\n" +
-                "1-4: Contact Response (Ignore / Track / Intercept / Dispatch)\n" +
-                "Esc: Dismiss non-interactive messages\n\n" +
-                "Start by selecting your Strategic Priority. Good luck."));
+            title: "Pick a Priority",
+            body: "Strategic Priority:\n1) Coverage\n2) Research\n3) Response\n\nTip: Use 1-4 when a contact response prompt is active."));
     }
 
     [ContextMenu("Debug/Spot UFO")]

@@ -1,5 +1,6 @@
 using UnityEngine;
 using XCon.UI.Boxes;
+using System;
 using System.Collections;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
@@ -29,7 +30,28 @@ public class GameManager : MonoBehaviour
     private const string PickPriorityTriggerKey = "thinking/pick_priority";
     private const string WelcomeTriggerKey = "thinking/welcome_intro";
     private const string AutoLoadPriorityPrefKey = "xcon.save.autoload.priority";
+    public const string AutoLoadStatePrefKey = "xcon.save.autoload.state";
     private const string BestScorePrefKey = "xcon.mission.bestScore";
+    private const string CommanderNamePrefKey = "xcon.player.commanderName";
+
+    [Header("Player")]
+    [SerializeField] private string defaultCommanderName = "Commander";
+
+    private string commanderName = "Commander";
+
+    [Serializable]
+    public struct AutoLoadState
+    {
+        public int priority;
+        public float missionElapsedSeconds;
+        public int bestScore;
+        public float education;
+        public float permitRisk;
+        public int totalContactsSpawned;
+        public int respondedContactsCount;
+        public int expiredResponsesCount;
+        public string commanderName;
+    }
 
     [Header("Mission")]
     [SerializeField] private bool enableMissionEndConditions = true;
@@ -59,6 +81,10 @@ public class GameManager : MonoBehaviour
     private int bestScore;
     private Text missionHudLabel;
     private GameObject missionHudPanel;
+
+    public string CommanderName => commanderName;
+    public float MissionElapsedSeconds => missionElapsedSeconds;
+    public int BestScore => bestScore;
 
     private enum MissionEndReason
     {
@@ -155,7 +181,8 @@ public class GameManager : MonoBehaviour
 
     void Start()
     {
-        Debug.Log("GameManager started. Welcome, General Yngvar Thon!");
+        InitializeCommanderIdentity();
+        Debug.Log($"GameManager started. Welcome, Commander {commanderName}!");
 
         ResetRuntimeSessionState();
         EnsureMissionConfigIsValid();
@@ -190,9 +217,8 @@ public class GameManager : MonoBehaviour
             gameObject.AddComponent<GameMenuController>();
         }
 
-        TryApplyAutoLoadedPriority();
-
         bestScore = PlayerPrefs.GetInt(BestScorePrefKey, 0);
+        TryApplyAutoLoadedState();
         BuildMissionHud();
         RefreshMissionHud();
 
@@ -254,6 +280,90 @@ public class GameManager : MonoBehaviour
         SetPriority((StrategicPriority)raw, publishFeedback: true);
     }
 
+    private void TryApplyAutoLoadedState()
+    {
+        if (PlayerPrefs.HasKey(AutoLoadStatePrefKey))
+        {
+            var json = PlayerPrefs.GetString(AutoLoadStatePrefKey, string.Empty);
+            PlayerPrefs.DeleteKey(AutoLoadStatePrefKey);
+            PlayerPrefs.Save();
+
+            if (!string.IsNullOrWhiteSpace(json))
+            {
+                var state = JsonUtility.FromJson<AutoLoadState>(json);
+                ApplyAutoLoadState(state);
+                return;
+            }
+        }
+
+        // Backward compatibility for older save data that only carried priority.
+        TryApplyAutoLoadedPriority();
+    }
+
+    private void ApplyAutoLoadState(AutoLoadState state)
+    {
+        if (!string.IsNullOrWhiteSpace(state.commanderName))
+        {
+            SetCommanderName(state.commanderName, persist: true);
+        }
+
+        var rawPriority = state.priority;
+        if (rawPriority < (int)StrategicPriority.Coverage || rawPriority > (int)StrategicPriority.Response)
+        {
+            rawPriority = (int)StrategicPriority.Coverage;
+        }
+
+        SetPriority((StrategicPriority)rawPriority, publishFeedback: false);
+
+        missionElapsedSeconds = Mathf.Max(0f, state.missionElapsedSeconds);
+        bestScore = Mathf.Max(bestScore, state.bestScore);
+        PlayerPrefs.SetInt(BestScorePrefKey, bestScore);
+        PlayerPrefs.Save();
+
+        if (cachedUfoManager != null)
+        {
+            cachedUfoManager.ApplyPersistentState(
+                state.education,
+                state.permitRisk,
+                state.totalContactsSpawned,
+                state.respondedContactsCount,
+                state.expiredResponsesCount);
+        }
+    }
+
+    public void SetCommanderName(string name, bool persist)
+    {
+        var trimmed = string.IsNullOrWhiteSpace(name) ? defaultCommanderName : name.Trim();
+        commanderName = trimmed;
+
+        if (!persist)
+        {
+            return;
+        }
+
+        PlayerPrefs.SetString(CommanderNamePrefKey, commanderName);
+        PlayerPrefs.Save();
+    }
+
+    private void InitializeCommanderIdentity()
+    {
+        var stored = PlayerPrefs.GetString(CommanderNamePrefKey, string.Empty).Trim();
+        if (!string.IsNullOrWhiteSpace(stored))
+        {
+            commanderName = stored;
+            return;
+        }
+
+        var osName = Environment.UserName;
+        if (!string.IsNullOrWhiteSpace(osName))
+        {
+            SetCommanderName(osName, persist: true);
+            return;
+        }
+
+        SetCommanderName(defaultCommanderName, persist: true);
+    }
+
     private IEnumerator PublishStartupWelcomePrompt()
     {
         // Box system bootstraps at runtime; wait briefly to ensure queue availability.
@@ -283,9 +393,9 @@ public class GameManager : MonoBehaviour
             channel: BoxChannel.Thinking,
             severity: BoxSeverity.Info,
             sourceTag: "Commander",
-            title: "Welcome, Commander",
+            title: $"Welcome, Commander {commanderName}",
             body:
-                "Welcome to X-Con U.F.O Defence.\n" +
+                $"Welcome to X-Con U.F.O Defence, Commander {commanderName}.\n" +
                 "Your mission is to detect contacts, assess incidents, and choose the right response before threats escalate.\n\n" +
                 "Core controls:\n" +
                 "1-3: Strategic Priority (Coverage / Research / Response)\n" +
@@ -621,7 +731,10 @@ public class GameManager : MonoBehaviour
         panelRect.anchoredPosition = Vector2.zero;
         panelRect.sizeDelta = new Vector2(560f, 380f);
 
-        var heading = CreatePanelLabel(missionEndPanel.transform, "Heading", reason == MissionEndReason.Victory ? "Mission Complete" : "Mission Failed", 34, new Vector2(0f, -44f));
+        var headingText = reason == MissionEndReason.Victory
+            ? $"Mission Complete, {commanderName}"
+            : $"Mission Failed, {commanderName}";
+        var heading = CreatePanelLabel(missionEndPanel.transform, "Heading", headingText, 34, new Vector2(0f, -44f));
         heading.alignment = TextAnchor.MiddleCenter;
 
         var summary = BuildMissionSummary(reason, ufo, score, bestScore, isNewBest);

@@ -240,6 +240,20 @@ public class UFOManager : MonoBehaviour
     public int RespondedContactsCount => respondedContactsCount;
     public int ExpiredResponsesCount => expiredResponsesCount;
 
+    public void ApplyPersistentState(float loadedEducation, float loadedPermitRisk, int loadedTotalContacts, int loadedRespondedContacts, int loadedExpiredResponses)
+    {
+        education = Mathf.Clamp(loadedEducation, 0f, 100f);
+        permitRisk = Mathf.Clamp(loadedPermitRisk, 0f, 100f);
+
+        nextContactId = Mathf.Max(0, loadedTotalContacts);
+        respondedContactsCount = Mathf.Clamp(loadedRespondedContacts, 0, nextContactId);
+        expiredResponsesCount = Mathf.Clamp(loadedExpiredResponses, 0, nextContactId);
+
+        // Loaded sessions are reconstructed from aggregate stats, so clear prior contact detail caches.
+        contactRecordsById.Clear();
+        contactIdOrder.Clear();
+    }
+
     private struct ContactRecord
     {
         public int ContactId;

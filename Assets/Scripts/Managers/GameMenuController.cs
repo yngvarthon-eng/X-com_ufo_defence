@@ -15,6 +15,14 @@ public class GameMenuController : MonoBehaviour
     {
         public int priority;
         public int mapStyleIndex;
+        public float missionElapsedSeconds;
+        public int bestScore;
+        public float education;
+        public float permitRisk;
+        public int totalContactsSpawned;
+        public int respondedContactsCount;
+        public int expiredResponsesCount;
+        public string commanderName;
         public string savedAtUtc;
     }
 
@@ -159,13 +167,24 @@ public class GameMenuController : MonoBehaviour
 
     private void SaveGame()
     {
-        var priority = GameManager.Instance != null ? (int)GameManager.Instance.CurrentPriority : (int)GameManager.StrategicPriority.Coverage;
+        var manager = GameManager.Instance != null ? GameManager.Instance : UnityEngine.Object.FindAnyObjectByType<GameManager>();
+        var ufo = manager != null ? manager.GetComponent<UFOManager>() : UnityEngine.Object.FindAnyObjectByType<UFOManager>();
+
+        var priority = manager != null ? (int)manager.CurrentPriority : (int)GameManager.StrategicPriority.Coverage;
         var mapStyle = PlayerPrefs.GetInt(MapStylePrefKey, 0);
 
         var data = new SaveData
         {
             priority = priority,
             mapStyleIndex = mapStyle,
+            missionElapsedSeconds = manager != null ? manager.MissionElapsedSeconds : 0f,
+            bestScore = manager != null ? manager.BestScore : PlayerPrefs.GetInt("xcon.mission.bestScore", 0),
+            education = ufo != null ? ufo.Education : 0f,
+            permitRisk = ufo != null ? ufo.PermitRisk : 0f,
+            totalContactsSpawned = ufo != null ? ufo.TotalContactsSpawned : 0,
+            respondedContactsCount = ufo != null ? ufo.RespondedContactsCount : 0,
+            expiredResponsesCount = ufo != null ? ufo.ExpiredResponsesCount : 0,
+            commanderName = manager != null ? manager.CommanderName : string.Empty,
             savedAtUtc = DateTime.UtcNow.ToString("O")
         };
 
@@ -197,6 +216,21 @@ public class GameMenuController : MonoBehaviour
         var data = JsonUtility.FromJson<SaveData>(json);
         PlayerPrefs.SetInt(AutoLoadPriorityPrefKey, data.priority);
         PlayerPrefs.SetInt(MapStylePrefKey, data.mapStyleIndex);
+
+        var state = new GameManager.AutoLoadState
+        {
+            priority = data.priority,
+            missionElapsedSeconds = data.missionElapsedSeconds,
+            bestScore = data.bestScore,
+            education = data.education,
+            permitRisk = data.permitRisk,
+            totalContactsSpawned = data.totalContactsSpawned,
+            respondedContactsCount = data.respondedContactsCount,
+            expiredResponsesCount = data.expiredResponsesCount,
+            commanderName = data.commanderName,
+        };
+
+        PlayerPrefs.SetString(GameManager.AutoLoadStatePrefKey, JsonUtility.ToJson(state));
         PlayerPrefs.Save();
 
         SetPaused(false);

@@ -76,6 +76,9 @@ public class GameManager : MonoBehaviour
 
     private void OnValidate()
     {
+        missionDurationSeconds = Mathf.Max(30f, missionDurationSeconds);
+        permitRiskFailThreshold = Mathf.Clamp(permitRiskFailThreshold, 10f, 100f);
+
         responseScoreWeight = Mathf.Max(0, responseScoreWeight);
         contactScoreWeight = Mathf.Max(0, contactScoreWeight);
         educationScoreWeight = Mathf.Max(0, educationScoreWeight);
@@ -154,6 +157,9 @@ public class GameManager : MonoBehaviour
     {
         Debug.Log("GameManager started. Welcome, General Yngvar Thon!");
 
+        ResetRuntimeSessionState();
+        EnsureMissionConfigIsValid();
+
         // Ensure the research system exists so other systems can call it.
         if (GetComponent<ResearchManager>() == null)
         {
@@ -191,6 +197,42 @@ public class GameManager : MonoBehaviour
         RefreshMissionHud();
 
         StartCoroutine(PublishStartupWelcomePrompt());
+    }
+
+    private void EnsureMissionConfigIsValid()
+    {
+        if (missionDurationSeconds < 30f)
+        {
+            missionDurationSeconds = 20f * 60f;
+        }
+
+        permitRiskFailThreshold = Mathf.Clamp(permitRiskFailThreshold, 10f, 100f);
+    }
+
+    private void ResetRuntimeSessionState()
+    {
+        missionElapsedSeconds = 0f;
+        missionEnded = false;
+
+        GameMenuController.SetPaused(false);
+
+        DestroyIfExists("MissionEndCanvas");
+        DestroyIfExists("MissionHudCanvas");
+
+        missionEndPanel = null;
+        missionHudPanel = null;
+        missionHudLabel = null;
+    }
+
+    private static void DestroyIfExists(string objectName)
+    {
+        var go = GameObject.Find(objectName);
+        if (go == null)
+        {
+            return;
+        }
+
+        Destroy(go);
     }
 
     private void TryApplyAutoLoadedPriority()
@@ -343,6 +385,11 @@ public class GameManager : MonoBehaviour
             return;
         }
 
+        if (missionDurationSeconds < 1f)
+        {
+            return;
+        }
+
         if (!GameMenuController.IsPaused)
         {
             missionElapsedSeconds += Time.unscaledDeltaTime;
@@ -370,6 +417,8 @@ public class GameManager : MonoBehaviour
         }
 
         missionEnded = true;
+
+        Debug.Log($"[Mission] Ended: {reason}. elapsed={missionElapsedSeconds:0.00}s duration={missionDurationSeconds:0.00}s permitRisk={(ufo != null ? ufo.PermitRisk : -1f):0.0} threshold={permitRiskFailThreshold:0.0}");
 
         if (pauseGameWhenMissionEnds)
         {

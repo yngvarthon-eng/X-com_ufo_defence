@@ -29,6 +29,15 @@ public class GameMenuController : MonoBehaviour
     private RectTransform menuPanelRect;
     private RectTransform menuToggleRect;
 
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    private static void ResetPauseStateOnSubsystemRegistration()
+    {
+        IsPaused = false;
+        Time.timeScale = 1f;
+        AudioListener.pause = false;
+        PauseStateChanged = null;
+    }
+
     private void Start()
     {
         BuildMenuUI();

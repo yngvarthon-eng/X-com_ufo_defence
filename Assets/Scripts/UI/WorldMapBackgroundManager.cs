@@ -196,7 +196,8 @@ public class WorldMapBackgroundManager : MonoBehaviour
             return;
         }
 
-        backgroundImage.preserveAspect = forcePreserveAspect;
+        // Avoid applying aspect fit twice (Image + AspectRatioFitter), which can cause excessive shrinking.
+        backgroundImage.preserveAspect = useAspectRatioFitter ? false : forcePreserveAspect;
 
         if (forceSimpleImageType)
         {
@@ -451,6 +452,7 @@ public class WorldMapBackgroundManager : MonoBehaviour
         }
 
         backgroundImage.sprite = nextSprite;
+        UpdateAspectFromSprite(nextSprite);
 
         elapsed = 0f;
         while (elapsed < halfDuration)

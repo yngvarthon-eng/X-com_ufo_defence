@@ -1,5 +1,6 @@
 using UnityEngine;
 using XCon.UI.Boxes;
+using XCon.Smuggling;
 using System;
 using System.Collections;
 using UnityEngine.SceneManagement;
@@ -64,6 +65,8 @@ public class GameManager : MonoBehaviour
         public int muleCargoSpills;
         public int warheadsSeized;
         public int warheadsDelivered;
+        public int hazardSitesContained;
+        public int regionsContaminated;
         public string commanderName;
     }
 
@@ -94,6 +97,8 @@ public class GameManager : MonoBehaviour
     [SerializeField] private int warheadSeizedBonusWeight = 500;
     [SerializeField] private int cargoSpillPenaltyWeight = 120;
     [SerializeField] private int warheadDeliveredPenaltyWeight = 600;
+    [SerializeField] private int hazardSiteContainedBonusWeight = 150;
+    [SerializeField] private int regionContaminatedPenaltyWeight = 500;
     [SerializeField] private float fallbackTimeScoreMultiplier = 0.8f;
 
     [Header("Medals")]
@@ -176,6 +181,8 @@ public class GameManager : MonoBehaviour
         warheadSeizedBonusWeight = Mathf.Max(0, warheadSeizedBonusWeight);
         cargoSpillPenaltyWeight = Mathf.Max(0, cargoSpillPenaltyWeight);
         warheadDeliveredPenaltyWeight = Mathf.Max(0, warheadDeliveredPenaltyWeight);
+        hazardSiteContainedBonusWeight = Mathf.Max(0, hazardSiteContainedBonusWeight);
+        regionContaminatedPenaltyWeight = Mathf.Max(0, regionContaminatedPenaltyWeight);
         fallbackTimeScoreMultiplier = Mathf.Max(0f, fallbackTimeScoreMultiplier);
 
         bronzeScoreThreshold = Mathf.Max(0, bronzeScoreThreshold);
@@ -273,6 +280,11 @@ public class GameManager : MonoBehaviour
         }
 
         cachedUfoManager = GetComponent<UFOManager>();
+
+        if (GetComponent<HazardSiteManager>() == null)
+        {
+            gameObject.AddComponent<HazardSiteManager>();
+        }
 
         // Ensure response-related managers exist.
         if (GetComponent<SquadManager>() == null)
@@ -677,6 +689,12 @@ public class GameManager : MonoBehaviour
                 state.muleCargoSpills,
                 state.warheadsSeized,
                 state.warheadsDelivered);
+        }
+
+        var hazardSites = GetHazardSites();
+        if (hazardSites != null)
+        {
+            hazardSites.ApplyPersistentState(state.hazardSitesContained, state.regionsContaminated);
         }
     }
 
@@ -1219,7 +1237,20 @@ public class GameManager : MonoBehaviour
             $"Priority: {currentPriority}  {progressText}\n" +
             $"Contacts: {ufo.TotalContactsSpawned}  Responses: {ufo.RespondedContactsCount}  Missed: {ufo.ExpiredResponsesCount}\n" +
             $"Education: {Mathf.RoundToInt(ufo.Education)}  PermitRisk: {Mathf.RoundToInt(ufo.PermitRisk)}\n" +
-            BuildExpireStreakHudText(ufo);
+            BuildExpireStreakHudText(ufo) +
+            BuildHazardHudText();
+    }
+
+    private string BuildHazardHudText()
+    {
+        var sites = GetHazardSites();
+        var line = sites != null ? sites.BuildHudLine() : string.Empty;
+        return string.IsNullOrEmpty(line) ? string.Empty : "\n" + line;
+    }
+
+    private HazardSiteManager GetHazardSites()
+    {
+        return HazardSiteManager.Instance != null ? HazardSiteManager.Instance : GetComponent<HazardSiteManager>();
     }
 
     private string BuildExpireStreakHudText(UFOManager ufo)
@@ -1267,12 +1298,26 @@ public class GameManager : MonoBehaviour
     /// <summary>Mule score lines for the mission end panel. Empty when no Mule cargo was seized, spilled or delivered.</summary>
     private string BuildMuleBreakdownLines(UFOManager ufo)
     {
-        if (ufo == null || (ufo.WarheadsSeized == 0 && ufo.MuleCargoSpills == 0 && ufo.WarheadsDelivered == 0))
+        var hazardSites = GetHazardSites();
+        var contained = hazardSites != null ? hazardSites.SitesContained : 0;
+        var contaminated = hazardSites != null ? hazardSites.RegionsContaminated : 0;
+
+        if (ufo == null || (ufo.WarheadsSeized == 0 && ufo.MuleCargoSpills == 0 && ufo.WarheadsDelivered == 0 && contained == 0 && contaminated == 0))
         {
             return string.Empty;
         }
 
-        var parts = new System.Collections.Generic.List<string>(3);
+        var parts = new System.Collections.Generic.List<string>(5);
+        if (contained > 0)
+        {
+            parts.Add($"<color=#8CFF8C>+ Sites contained ({contained}): {contained * hazardSiteContainedBonusWeight}</color>");
+        }
+
+        if (contaminated > 0)
+        {
+            parts.Add($"<color=#FF9B9B>- Regions contaminated ({contaminated}): {contaminated * regionContaminatedPenaltyWeight}</color>");
+        }
+
         if (ufo.WarheadsSeized > 0)
         {
             parts.Add($"<color=#8CFF8C>+ Warheads seized ({ufo.WarheadsSeized}): {ufo.WarheadsSeized * warheadSeizedBonusWeight}</color>");
@@ -1326,9 +1371,12 @@ public class GameManager : MonoBehaviour
         var warheadBonus = ufo.WarheadsSeized * warheadSeizedBonusWeight;
         var spillPenalty = ufo.MuleCargoSpills * cargoSpillPenaltyWeight;
         var deliveredPenalty = ufo.WarheadsDelivered * warheadDeliveredPenaltyWeight;
+        var hazardSites = GetHazardSites();
+        var containedBonus = hazardSites != null ? hazardSites.SitesContained * hazardSiteContainedBonusWeight : 0;
+        var contaminationPenalty = hazardSites != null ? hazardSites.RegionsContaminated * regionContaminatedPenaltyWeight : 0;
 
-        var rawScore = Mathf.Max(0, baseScore + contactCoverage + educationScore + survivalBonus + warheadBonus
-                                    - missPenalty - riskPenalty - spillPenalty - deliveredPenalty);
+        var rawScore = Mathf.Max(0, baseScore + contactCoverage + educationScore + survivalBonus + warheadBonus + containedBonus
+                                    - missPenalty - riskPenalty - spillPenalty - deliveredPenalty - contaminationPenalty);
         return ApplyDifficultyScoreMultiplier(rawScore);
     }
 

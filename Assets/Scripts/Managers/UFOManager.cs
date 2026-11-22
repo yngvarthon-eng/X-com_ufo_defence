@@ -1170,8 +1170,10 @@ public class UFOManager : MonoBehaviour
 
         StoreContactResponse(pendingContactId, choice);
         ApplyResponseEffects(pendingContactId, choice);
-        ExecuteResponseActions(pendingContactId, choice, pendingContactPosition);
+        // Before ExecuteResponseActions: an Intercept removes the UFO visual, and a spill needs
+        // its screen position to place the hazard site marker.
         ApplyMuleCargoConsequences(pendingContactId, choice, expired: false);
+        ExecuteResponseActions(pendingContactId, choice, pendingContactPosition);
 
         var queue = BoxMessageQueue.Instance != null ? BoxMessageQueue.Instance : UnityEngine.Object.FindAnyObjectByType<BoxMessageQueue>();
         if (queue == null)
@@ -2514,10 +2516,12 @@ public class UFOManager : MonoBehaviour
                     ApplyEducationDelta(-1f);
                     severity = BoxSeverity.Critical;
                     title = isWarhead ? "Radioactive Breach" : "Hazardous Spill";
+                    OpenHazardSite(contactId, cargo.Hazard);
                     body = $"The Mule broke apart on impact and the hold split open.\nCargo: {name}\nHazard: {hazard}\n\n" +
                            (isWarhead
                                ? "The warhead casing is breached. The crash zone is contaminated. Evacuate and send hazmat teams."
-                               : "Contamination around the crash site. Keep civilians away and send hazmat teams.");
+                               : "Contamination around the crash site. Keep civilians away and send hazmat teams.") +
+                           "\n\nA hazard site is now open on the map. Press H to send the hazmat team.";
                 }
                 else
                 {
@@ -2570,6 +2574,44 @@ public class UFOManager : MonoBehaviour
             sourceTag: "Smuggling",
             title: title,
             body: $"Contact #{contactId}\n\n{body}\n\nTotals: Spills {MuleCargoSpills}  |  Warheads seized {WarheadsSeized}  |  Warheads delivered {WarheadsDelivered}"));
+    }
+
+    private void OpenHazardSite(int contactId, CargoHazard hazard)
+    {
+        var sites = HazardSiteManager.Instance != null ? HazardSiteManager.Instance : GetComponent<HazardSiteManager>();
+        if (sites == null)
+        {
+            return;
+        }
+
+        sites.CreateSite(contactId, hazard, GetContactViewportPosition(contactId));
+    }
+
+    /// <summary>Where the contact's UFO is on screen (0..1), or a point near the middle if it has no visual.</summary>
+    private Vector2 GetContactViewportPosition(int contactId)
+    {
+        var cam = Camera.main != null ? Camera.main : UnityEngine.Object.FindAnyObjectByType<Camera>();
+        if (cam != null && ufoVisualByContactId.TryGetValue(contactId, out var visual) && visual != null)
+        {
+            var vp = cam.WorldToViewportPoint(visual.transform.position);
+            if (vp.z > 0f)
+            {
+                return new Vector2(vp.x, vp.y);
+            }
+        }
+
+        return new Vector2(UnityEngine.Random.Range(0.3f, 0.7f), UnityEngine.Random.Range(0.35f, 0.65f));
+    }
+
+    /// <summary>Permit risk from open hazard sites. Increases are scaled by difficulty.</summary>
+    public void AddPermitRiskFromHazard(float delta)
+    {
+        permitRisk = Mathf.Clamp(permitRisk + ApplyDifficultyToPermitRiskGain(delta), 0f, 100f);
+    }
+
+    public void AddEducationFromHazard(float delta)
+    {
+        ApplyEducationDelta(delta);
     }
 
     [ContextMenu("Debug/Incident: Mule (Random Cargo)")]

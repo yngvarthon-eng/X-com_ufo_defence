@@ -29,6 +29,8 @@ public class GameMenuController : MonoBehaviour
         public int muleCargoSpills;
         public int warheadsSeized;
         public int warheadsDelivered;
+        public int hazardSitesContained;
+        public int regionsContaminated;
         public string difficulty; // Enum name; missing in older saves, which keeps the current choice.
         public string commanderName;
         public string savedAtUtc;
@@ -382,6 +384,8 @@ public class GameMenuController : MonoBehaviour
             muleCargoSpills = ufo != null ? ufo.MuleCargoSpills : 0,
             warheadsSeized = ufo != null ? ufo.WarheadsSeized : 0,
             warheadsDelivered = ufo != null ? ufo.WarheadsDelivered : 0,
+            hazardSitesContained = XCon.Smuggling.HazardSiteManager.Instance != null ? XCon.Smuggling.HazardSiteManager.Instance.SitesContained : 0,
+            regionsContaminated = XCon.Smuggling.HazardSiteManager.Instance != null ? XCon.Smuggling.HazardSiteManager.Instance.RegionsContaminated : 0,
             difficulty = Difficulty.Active.ToString(),
             commanderName = manager != null ? manager.CommanderName : string.Empty,
             savedAtUtc = DateTime.UtcNow.ToString("O")
@@ -436,6 +440,8 @@ public class GameMenuController : MonoBehaviour
             muleCargoSpills = data.muleCargoSpills,
             warheadsSeized = data.warheadsSeized,
             warheadsDelivered = data.warheadsDelivered,
+            hazardSitesContained = data.hazardSitesContained,
+            regionsContaminated = data.regionsContaminated,
             commanderName = data.commanderName,
         };
 

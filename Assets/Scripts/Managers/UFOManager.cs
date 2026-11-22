@@ -3,6 +3,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using XCon.UI.Boxes;
+using XCon.Smuggling;
 using UnityEngine.UI;
 
 using Object = UnityEngine.Object;
@@ -26,6 +27,9 @@ public class UFOManager : MonoBehaviour
 
     [Tooltip("If true and a smuggler prefab is assigned, use it as the default spawned visual.")]
     [SerializeField] private bool useSmugglerPrefabAsDefaultVisual = true;
+
+    [Tooltip("If enabled and both prefabs are assigned, spawns will alternate between base and smuggler visuals.")]
+    [SerializeField] private bool alternateBetweenAssignedUfoVisuals = false;
 
     [Tooltip("If true and a prefab is assigned, spawns a visual UFO per contact.")]
     [SerializeField] private bool spawnUfoVisuals = true;
@@ -161,6 +165,15 @@ public class UFOManager : MonoBehaviour
     [Range(0f, 1f)]
     [SerializeField] private float quietCargoChanceWhenSmuggler = 0.75f;
 
+    [Header("Mule Cargo (goods-only smugglers)")]
+    [Tooltip("If enabled, non-Quiet-Cargo smuggler contacts are Mules carrying hidden goods with a hazard level.")]
+    [SerializeField] private bool enableMuleCargo = true;
+
+    [Min(0f)] [SerializeField] private float muleWeightContraband = 0.45f;
+    [Min(0f)] [SerializeField] private float muleWeightHeavyMetals = 0.25f;
+    [Min(0f)] [SerializeField] private float muleWeightDrugPrecursors = 0.25f;
+    [Min(0f)] [SerializeField] private float muleWeightNuclearWarhead = 0.05f;
+
     [Header("Behavior Tells")]
     [Tooltip("Chance that a Dark contact is operating solo (lower risk posture).")]
     [Range(0f, 1f)]
@@ -217,6 +230,7 @@ public class UFOManager : MonoBehaviour
 
     private readonly Dictionary<int, GameObject> ufoVisualByContactId = new();
     private readonly Dictionary<int, Coroutine> ufoVisualLifecycleCoroutineByContactId = new();
+    private bool spawnSmugglerOnNextContact;
     private Image worldMapBackgroundImage;
     private bool hasCachedBackgroundAlpha;
     private float cachedBackgroundAlpha = 1f;
@@ -242,6 +256,20 @@ public class UFOManager : MonoBehaviour
     public int RespondedContactsCount => respondedContactsCount;
     public int ExpiredResponsesCount => expiredResponsesCount;
     public int ConsecutiveExpiredResponsesCount => consecutiveExpiredResponsesCount;
+    public float BaseContactsPerMinute => baseContactsPerMinute;
+
+    public void SetBaseContactsPerMinute(float value)
+    {
+        baseContactsPerMinute = Mathf.Max(0f, value);
+
+        if (!enableAutoSpawn)
+        {
+            return;
+        }
+
+        // Re-sample next spawn so rate changes are reflected immediately.
+        ScheduleNextAutoSpawn(fromNowSeconds: null);
+    }
 
     public void ApplyPersistentState(float loadedEducation, float loadedPermitRisk, int loadedTotalContacts, int loadedRespondedContacts, int loadedExpiredResponses, int loadedConsecutiveExpiredResponses)
     {
@@ -269,6 +297,9 @@ public class UFOManager : MonoBehaviour
         public UFOIntent Intent;
         public bool QuietCargo;
 
+        public bool HasMuleCargo;
+        public MuleCargo MuleCargo;
+
         public bool HasResponse;
         public UFOResponseChoice Response;
         public float RespondedAt;
@@ -277,6 +308,7 @@ public class UFOManager : MonoBehaviour
     private void Awake()
     {
         softStartBeganAt = Time.realtimeSinceStartup;
+        spawnSmugglerOnNextContact = useSmugglerPrefabAsDefaultVisual;
         cuePlayer = GetComponent<ProceduralAudioCuePlayer>();
         if (cuePlayer == null)
         {
@@ -628,12 +660,19 @@ public class UFOManager : MonoBehaviour
 
     private GameObject GetVisualPrefabForSpawn()
     {
+        if (alternateBetweenAssignedUfoVisuals && smugglerUfoPrefab != null && ufoPrefab != null)
+        {
+            var selected = spawnSmugglerOnNextContact ? smugglerUfoPrefab : ufoPrefab;
+            spawnSmugglerOnNextContact = !spawnSmugglerOnNextContact;
+            return selected;
+        }
+
         if (useSmugglerPrefabAsDefaultVisual && smugglerUfoPrefab != null)
         {
             return smugglerUfoPrefab;
         }
 
-        return ufoPrefab;
+        return ufoPrefab != null ? ufoPrefab : smugglerUfoPrefab;
     }
 
     private void Update()
@@ -1115,6 +1154,7 @@ public class UFOManager : MonoBehaviour
         StoreContactResponse(pendingContactId, choice);
         ApplyResponseEffects(pendingContactId, choice);
         ExecuteResponseActions(pendingContactId, choice, pendingContactPosition);
+        ApplyMuleCargoConsequences(pendingContactId, choice, expired: false);
 
         var queue = BoxMessageQueue.Instance != null ? BoxMessageQueue.Instance : UnityEngine.Object.FindAnyObjectByType<BoxMessageQueue>();
         if (queue == null)
@@ -1228,6 +1268,7 @@ public class UFOManager : MonoBehaviour
         expiredResponsesCount++;
         consecutiveExpiredResponsesCount++;
         cuePlayer?.PlayResponseExpired();
+        ApplyMuleCargoConsequences(pendingContactId, UFOResponseChoice.Ignore, expired: true);
 
         var queue = BoxMessageQueue.Instance != null ? BoxMessageQueue.Instance : UnityEngine.Object.FindAnyObjectByType<BoxMessageQueue>();
         if (queue == null)
@@ -1736,6 +1777,7 @@ public class UFOManager : MonoBehaviour
         var body = string.Empty;
 
         var quietCargo = false;
+        MuleCargo? muleCargo = null;
         var publishEducationBulletin = false;
         string educationTitle = null;
         string educationBody = null;
@@ -1820,6 +1862,27 @@ public class UFOManager : MonoBehaviour
                             educationTitle = "Education Bulletin";
                             educationBody = "Public advisory: do not approach unknown craft or crash sites. Report sightings immediately. Certified personnel only.";
                         }
+                        else if (enableMuleCargo)
+                        {
+                            var cargoType = debugForcedMuleCargo ?? MuleCargoRules.Roll(
+                                UnityEngine.Random.value,
+                                muleWeightContraband,
+                                muleWeightHeavyMetals,
+                                muleWeightDrugPrecursors,
+                                muleWeightNuclearWarhead);
+                            debugForcedMuleCargo = null;
+                            muleCargo = new MuleCargo { Type = cargoType, Revealed = false };
+
+                            severity = BoxSeverity.Warn;
+                            title = "Mule Cargo Craft";
+                            body = "Low-tech cargo craft suspected. No crew, no life support: goods only.\n" +
+                                   "Cargo: UNKNOWN. Could be harmless, toxic, or worse.\n\n" +
+                                   "Track = scan the hold.  Dispatch = recover it intact.\n" +
+                                   "Intercept = shoot it down (risk of spill).  Ignore = it gets delivered.";
+                            publishEducationBulletin = true;
+                            educationTitle = "Education Bulletin";
+                            educationBody = "Public advisory: if a cargo craft comes down, stay upwind and keep away. Unknown cargo may be toxic or radioactive.";
+                        }
                         else
                         {
                             severity = BoxSeverity.Warn;
@@ -1865,6 +1928,10 @@ public class UFOManager : MonoBehaviour
         }
 
             StoreContactOutcome(contactId, outcome, quietCargo);
+            if (muleCargo.HasValue)
+            {
+                StoreMuleCargo(contactId, muleCargo.Value);
+            }
 
             ApplyMetersForOutcome(outcome, publishedEducationBulletin: publishEducationBulletin, quietCargo: quietCargo);
 
@@ -2279,6 +2346,188 @@ public class UFOManager : MonoBehaviour
             var responseText = r.HasResponse ? r.Response.ToString() : "(none)";
             Debug.Log($"[UFO] Contact #{r.ContactId} at {r.Position} response={responseText}");
         }
+    }
+
+    // ---------------------------------------------------------------------
+    // Mule cargo (see Design_ExodusCraft.md, "Gen 0b: Mule")
+    // ---------------------------------------------------------------------
+
+    private MuleCargoType? debugForcedMuleCargo;
+
+    public int MuleCargoSpills { get; private set; }
+    public int WarheadsSeized { get; private set; }
+    public int WarheadsDelivered { get; private set; }
+
+    private void StoreMuleCargo(int contactId, MuleCargo cargo)
+    {
+        if (!contactRecordsById.TryGetValue(contactId, out var record))
+        {
+            return;
+        }
+
+        record.HasMuleCargo = true;
+        record.MuleCargo = cargo;
+        contactRecordsById[contactId] = record;
+    }
+
+    private void ApplyMuleCargoConsequences(int contactId, UFOResponseChoice choice, bool expired)
+    {
+        if (!contactRecordsById.TryGetValue(contactId, out var record) || !record.HasMuleCargo)
+        {
+            return;
+        }
+
+        var cargo = record.MuleCargo;
+        var name = MuleCargoRules.DisplayName(cargo.Type);
+        var hazard = MuleCargoRules.HazardLabel(cargo.Hazard);
+        var isWarhead = cargo.Type == MuleCargoType.NuclearWarhead;
+
+        var severity = BoxSeverity.Info;
+        string title;
+        string body;
+
+        switch (choice)
+        {
+            case UFOResponseChoice.Track:
+                cargo.Revealed = true;
+                ApplyEducationDelta(+0.5f);
+                severity = cargo.Hazard == CargoHazard.None ? BoxSeverity.Info : BoxSeverity.Warn;
+                if (isWarhead) severity = BoxSeverity.Critical;
+                title = "Cargo Scan";
+                body = $"Scan of the hold is complete.\nCargo: {name}\nHazard: {hazard}" +
+                       (isWarhead ? "\n\nA nuclear warhead is in the air. Recovery should be the top priority." : string.Empty);
+                break;
+
+            case UFOResponseChoice.Dispatch:
+                cargo.Revealed = true;
+                ApplyEducationDelta(+0.5f);
+                if (isWarhead)
+                {
+                    WarheadsSeized++;
+                    AdjustEscalationStage(UFOSpeciesSegment.Human, -1);
+                    ApplyEducationDelta(+1.5f);
+                    severity = BoxSeverity.Critical;
+                    title = "Warhead Seized";
+                    body = "The recovery team secured a nuclear warhead from the Mule's hold, intact.\n" +
+                           "The smuggling network has lost its most dangerous shipment.";
+                }
+                else
+                {
+                    title = "Cargo Recovered";
+                    body = $"The recovery team secured the hold intact.\nCargo: {name}\nHazard: {hazard}\n\nEvidence logged. The network will feel this.";
+                }
+                break;
+
+            case UFOResponseChoice.Intercept:
+            {
+                cargo.Revealed = true;
+                var spilled = UnityEngine.Random.value < MuleCargoRules.SpillChanceOnIntercept(cargo.Type);
+                if (spilled)
+                {
+                    MuleCargoSpills++;
+                    AdjustEscalationStage(UFOSpeciesSegment.Human, +1);
+                    ApplyEducationDelta(-1f);
+                    severity = BoxSeverity.Critical;
+                    title = isWarhead ? "Radioactive Breach" : "Hazardous Spill";
+                    body = $"The Mule broke apart on impact and the hold split open.\nCargo: {name}\nHazard: {hazard}\n\n" +
+                           (isWarhead
+                               ? "The warhead casing is breached. The crash zone is contaminated. Evacuate and send hazmat teams."
+                               : "Contamination around the crash site. Keep civilians away and send hazmat teams.");
+                }
+                else
+                {
+                    if (isWarhead)
+                    {
+                        WarheadsSeized++;
+                    }
+
+                    severity = isWarhead ? BoxSeverity.Warn : BoxSeverity.Info;
+                    title = "Mule Down";
+                    body = $"The Mule is down and the hold held together.\nCargo: {name}\nHazard: {hazard}" +
+                           (isWarhead ? "\n\nThe warhead survived the crash intact. That was lucky." : string.Empty);
+                }
+                break;
+            }
+
+            default: // Ignore, or the response timer ran out.
+                if (isWarhead)
+                {
+                    WarheadsDelivered++;
+                    AdjustEscalationStage(UFOSpeciesSegment.Human, +1);
+                    severity = BoxSeverity.Critical;
+                }
+                else if (cargo.Hazard != CargoHazard.None)
+                {
+                    severity = BoxSeverity.Warn;
+                }
+
+                title = "Cargo Delivered";
+                body = (expired ? "No one responded in time. " : "The Mule was left alone. ") +
+                       $"It delivered its cargo.\n\nIntelligence later confirms:\nCargo: {name}\nHazard: {hazard}" +
+                       (isWarhead ? "\n\nA nuclear warhead is now in criminal hands." : string.Empty);
+                cargo.Revealed = true;
+                break;
+        }
+
+        record.MuleCargo = cargo;
+        contactRecordsById[contactId] = record;
+
+        var queue = BoxMessageQueue.Instance != null ? BoxMessageQueue.Instance : UnityEngine.Object.FindAnyObjectByType<BoxMessageQueue>();
+        if (queue == null)
+        {
+            return;
+        }
+
+        queue.Publish(new BoxMessage(
+            triggerKey: $"ufo/cargo/{contactId}",
+            channel: BoxChannel.Info,
+            severity: severity,
+            sourceTag: "Smuggling",
+            title: title,
+            body: $"Contact #{contactId}\n\n{body}\n\nTotals: Spills {MuleCargoSpills}  |  Warheads seized {WarheadsSeized}  |  Warheads delivered {WarheadsDelivered}"));
+    }
+
+    [ContextMenu("Debug/Incident: Mule (Random Cargo)")]
+    private void DebugIncidentMuleRandom() => DebugIncidentMule(null);
+
+    [ContextMenu("Debug/Incident: Mule (Nuclear Warhead)")]
+    private void DebugIncidentMuleWarhead() => DebugIncidentMule(MuleCargoType.NuclearWarhead);
+
+    private void DebugIncidentMule(MuleCargoType? forcedCargo)
+    {
+        if (!Application.isPlaying)
+        {
+            Debug.LogWarning("[UFO] Enter Play Mode to run the debug action.");
+            return;
+        }
+
+        if (!enableMuleCargo)
+        {
+            Debug.LogWarning("[UFO] Mule cargo is disabled on this UFOManager.");
+            return;
+        }
+
+        var queue = BoxMessageQueue.Instance != null ? BoxMessageQueue.Instance : UnityEngine.Object.FindAnyObjectByType<BoxMessageQueue>();
+        if (queue == null)
+        {
+            Debug.LogWarning("[UFO] BoxMessageQueue not found; cannot publish debug incident.");
+            return;
+        }
+
+        var position = new Vector3(10f, 0f, -4f);
+        var contactId = RegisterContact(position);
+        TrySpawnUfoVisual(contactId, position);
+        queue.Publish(new BoxMessage(
+            triggerKey: $"ufo/spotted/{contactId}",
+            channel: BoxChannel.Info,
+            severity: BoxSeverity.Warn,
+            sourceTag: "Radar",
+            title: "UFO Spotted",
+            body: $"Contact #{contactId}\nUFO sighted at {position}."));
+
+        debugForcedMuleCargo = forcedCargo;
+        PublishIncidentAssessment(queue, contactId, position, forcedOutcome: (UFOSpeciesSegment.Human, UFOIntent.Smuggle), forcedQuietCargo: false);
+        PublishResponseChoice(queue, contactId, position);
     }
 
     [ContextMenu("Debug/Incident: Human Smuggle (Quiet Cargo)")]

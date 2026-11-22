@@ -6,7 +6,7 @@ using UnityEngine;
 
 public static class SmugglerUfoSetup
 {
-    private const string ModelAssetPath = "Assets/Art/Models/UFO/Smuggler/Octagon_ARV_Indonesia_2009/Octagon_ARV_Indonesia_2009.fbx";
+    private const string ModelAssetPath = "Assets/Art/Models/UFO/UFODemo/UFODemo.fbx";
     private const string PrefabOutputPath = "Assets/Prefabs/UFO/SmugglerUFO.prefab";
     private const string MainScenePath = "Assets/x-con_ufo_defence.unity";
 

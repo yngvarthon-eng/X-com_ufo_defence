@@ -16,9 +16,12 @@ namespace XCon.UI.Boxes
         [SerializeField] private int maxDuplicateKeys = 512;
 
         [Header("Auto Dismiss")]
-        [SerializeField] private float infoAutoDismissSeconds = 2.5f;
-        [SerializeField] private float warnAutoDismissSeconds = 5.0f;
-        [SerializeField] private float thinkingAutoDismissSeconds = 6.0f;
+        [SerializeField] private float infoAutoDismissSeconds = 4.0f;
+        [SerializeField] private float warnAutoDismissSeconds = 7.0f;
+        [SerializeField] private float thinkingAutoDismissSeconds = 8.5f;
+        [SerializeField] private int longMessageCharThreshold = 180;
+        [SerializeField] private float longMessageExtraSeconds = 2.5f;
+        [SerializeField] private int veryLongMessageManualDismissThreshold = 320;
 
         private readonly List<BoxMessage> queue = new();
         private readonly Dictionary<string, float> lastPublishedAtByKey = new();
@@ -363,19 +366,48 @@ namespace XCon.UI.Boxes
                 return null;
             }
 
+            var contentLength = GetMessageContentLength(message);
+            if (contentLength >= veryLongMessageManualDismissThreshold)
+            {
+                return null;
+            }
+
+            float? baseSeconds;
+
             if (message.Channel != BoxChannel.Info)
             {
-                return message.Channel == BoxChannel.Thinking
+                baseSeconds = message.Channel == BoxChannel.Thinking
                     ? thinkingAutoDismissSeconds
                     : null;
             }
-
-            return message.Severity switch
+            else
             {
-                BoxSeverity.Info => infoAutoDismissSeconds,
-                BoxSeverity.Warn => warnAutoDismissSeconds,
-                _ => null,
-            };
+                baseSeconds = message.Severity switch
+                {
+                    BoxSeverity.Info => infoAutoDismissSeconds,
+                    BoxSeverity.Warn => warnAutoDismissSeconds,
+                    _ => null,
+                };
+            }
+
+            if (!baseSeconds.HasValue)
+            {
+                return null;
+            }
+
+            if (contentLength >= longMessageCharThreshold)
+            {
+                return baseSeconds.Value + Mathf.Max(0f, longMessageExtraSeconds);
+            }
+
+            return baseSeconds;
+        }
+
+        private static int GetMessageContentLength(BoxMessage message)
+        {
+            var titleLength = string.IsNullOrEmpty(message.Title) ? 0 : message.Title.Length;
+            var bodyLength = string.IsNullOrEmpty(message.Body) ? 0 : message.Body.Length;
+            return titleLength + bodyLength;
         }
 
         private void PruneDuplicateKeys(float now)

@@ -12,6 +12,9 @@ public class ProceduralAudioCuePlayer : MonoBehaviour
     [SerializeField] private AudioClip ufoDetectedClip;
     [SerializeField] private AudioClip responseAcceptedClip;
     [SerializeField] private AudioClip responseExpiredClip;
+    [SerializeField] private AudioClip expireStreakWarningClip;
+    [SerializeField] private AudioClip moodShiftMysteriousClip;
+    [SerializeField] private AudioClip moodShiftMilitaryClip;
     [SerializeField] private AudioClip missionVictoryClip;
     [SerializeField] private AudioClip missionFailureClip;
     [SerializeField] private AudioClip medalBronzeClip;
@@ -69,6 +72,36 @@ public class ProceduralAudioCuePlayer : MonoBehaviour
         }
 
         PlayOneShot("response.expired", 230f, 0.18f, 0.3f, Wave.Square);
+    }
+
+    public void PlayExpireStreakWarning()
+    {
+        if (PlayCuratedClip(expireStreakWarningClip, 1f))
+        {
+            return;
+        }
+
+        StartCoroutine(PlaySequence(new[] { 760f, 640f }, 0.1f, 0.08f, 0.24f));
+    }
+
+    public void PlayMoodShiftMysterious()
+    {
+        if (PlayCuratedClip(moodShiftMysteriousClip, 1f))
+        {
+            return;
+        }
+
+        StartCoroutine(PlaySequence(new[] { 560f, 520f }, 0.06f, 0.06f, 0.1f));
+    }
+
+    public void PlayMoodShiftMilitary()
+    {
+        if (PlayCuratedClip(moodShiftMilitaryClip, 1f))
+        {
+            return;
+        }
+
+        StartCoroutine(PlaySequence(new[] { 540f, 620f }, 0.06f, 0.05f, 0.11f));
     }
 
     public void PlayMissionVictory()

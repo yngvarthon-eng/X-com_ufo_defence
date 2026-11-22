@@ -29,13 +29,23 @@ public class GameManager : MonoBehaviour
 
     private const string PickPriorityTriggerKey = "thinking/pick_priority";
     private const string WelcomeTriggerKey = "thinking/welcome_intro";
+    private const string ArchangelProtocolBriefTriggerKey = "thinking/archangel_protocol/brief";
+    private const string ArchangelProtocolEngagedTriggerKey = "thinking/archangel_protocol/engaged";
+    private const string ArchangelProtocolDisengagedTriggerKey = "thinking/archangel_protocol/disengaged";
+    private const string ExpireStreakWarningTriggerKey = "warning/expire_streak";
+    private const string IntroMoodPrefKey = "xcon.intro.moodIndex";
     private const string AutoLoadPriorityPrefKey = "xcon.save.autoload.priority";
     public const string AutoLoadStatePrefKey = "xcon.save.autoload.state";
     private const string BestScorePrefKey = "xcon.mission.bestScore";
     private const string CommanderNamePrefKey = "xcon.player.commanderName";
+    private const string SkipReadyScreenOncePrefKey = "xcon.startup.skipReadyScreenOnce";
 
     [Header("Player")]
     [SerializeField] private string defaultCommanderName = "Commander";
+    [SerializeField] private bool alternateIntroMoodEachSession = true;
+
+    [Header("Startup")]
+    [SerializeField] private bool showReadyToPlayScreenOnStart = true;
 
     private string commanderName = "Commander";
 
@@ -65,6 +75,13 @@ public class GameManager : MonoBehaviour
     [Min(1)]
     [SerializeField] private int consecutiveExpireFailThreshold = 3;
 
+    [Header("Narrative")]
+    [SerializeField] private bool enableDynamicMoodShiftPosts = true;
+    [Range(20f, 95f)]
+    [SerializeField] private float moodShiftPermitRiskThreshold = 65f;
+    [Range(10f, 80f)]
+    [SerializeField] private float moodShiftPermitRiskRecoveryThreshold = 40f;
+
     [Header("Scoring")]
     [SerializeField] private int responseScoreWeight = 150;
     [SerializeField] private int contactScoreWeight = 25;
@@ -87,6 +104,33 @@ public class GameManager : MonoBehaviour
     private int bestScore;
     private Text missionHudLabel;
     private GameObject missionHudPanel;
+    private bool expireStreakWarningIssued;
+    private NarrativeMood activeMissionMood = NarrativeMood.Military;
+    private GameObject readyToPlayPanel;
+    private Toggle readySkipToggle;
+    private bool skipReadyNextTime;
+    private bool startupWelcomePublished;
+    private static bool readyScreenShownThisSession;
+
+    private enum NarrativeMood
+    {
+        Military = 0,
+        Mysterious = 1,
+    }
+
+    private readonly struct StartupPost
+    {
+        public StartupPost(string sourceTag, string title, string body)
+        {
+            SourceTag = sourceTag;
+            Title = title;
+            Body = body;
+        }
+
+        public string SourceTag { get; }
+        public string Title { get; }
+        public string Body { get; }
+    }
 
     public string CommanderName => commanderName;
     public float MissionElapsedSeconds => missionElapsedSeconds;
@@ -112,6 +156,12 @@ public class GameManager : MonoBehaviour
         missionDurationSeconds = Mathf.Max(30f, missionDurationSeconds);
         permitRiskFailThreshold = Mathf.Clamp(permitRiskFailThreshold, 10f, 100f);
         consecutiveExpireFailThreshold = Mathf.Max(1, consecutiveExpireFailThreshold);
+        moodShiftPermitRiskThreshold = Mathf.Clamp(moodShiftPermitRiskThreshold, 20f, 95f);
+        moodShiftPermitRiskRecoveryThreshold = Mathf.Clamp(moodShiftPermitRiskRecoveryThreshold, 10f, 80f);
+        if (moodShiftPermitRiskRecoveryThreshold >= moodShiftPermitRiskThreshold)
+        {
+            moodShiftPermitRiskRecoveryThreshold = Mathf.Max(10f, moodShiftPermitRiskThreshold - 10f);
+        }
 
         responseScoreWeight = Mathf.Max(0, responseScoreWeight);
         contactScoreWeight = Mathf.Max(0, contactScoreWeight);
@@ -167,6 +217,12 @@ public class GameManager : MonoBehaviour
 
         var go = new GameObject(RootName);
         go.AddComponent<GameManager>();
+    }
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    private static void ResetSessionStatics()
+    {
+        readyScreenShownThisSession = false;
     }
 
     void Awake()
@@ -237,7 +293,20 @@ public class GameManager : MonoBehaviour
         BuildMissionHud();
         RefreshMissionHud();
 
-        StartCoroutine(PublishStartupWelcomePrompt());
+        var skipReadyScreenOnce = PlayerPrefs.GetInt(SkipReadyScreenOncePrefKey, 0) == 1;
+        if (skipReadyScreenOnce)
+        {
+            PlayerPrefs.DeleteKey(SkipReadyScreenOncePrefKey);
+            PlayerPrefs.Save();
+        }
+
+        if (showReadyToPlayScreenOnStart && !readyScreenShownThisSession && !skipReadyScreenOnce)
+        {
+            ShowReadyToPlayPanel();
+            return;
+        }
+
+        BeginOperationalStart();
     }
 
     private void EnsureMissionConfigIsValid()
@@ -255,6 +324,9 @@ public class GameManager : MonoBehaviour
         missionElapsedSeconds = 0f;
         missionEnded = false;
         freeOpsMode = false;
+        expireStreakWarningIssued = false;
+        activeMissionMood = NarrativeMood.Military;
+        startupWelcomePublished = false;
 
         GameMenuController.SetPaused(false);
 
@@ -264,6 +336,229 @@ public class GameManager : MonoBehaviour
         missionEndPanel = null;
         missionHudPanel = null;
         missionHudLabel = null;
+        readyToPlayPanel = null;
+        readySkipToggle = null;
+        skipReadyNextTime = false;
+    }
+
+    private void BeginOperationalStart()
+    {
+        SetBoxCanvasVisible(true);
+
+        if (startupWelcomePublished)
+        {
+            return;
+        }
+
+        startupWelcomePublished = true;
+        StartCoroutine(PublishStartupWelcomePrompt());
+    }
+
+    private void ShowReadyToPlayPanel()
+    {
+        if (readyToPlayPanel != null)
+        {
+            return;
+        }
+
+        readyScreenShownThisSession = true;
+        GameMenuController.SetPaused(true);
+
+        if (missionHudPanel != null)
+        {
+            missionHudPanel.SetActive(false);
+        }
+
+        SetBoxCanvasVisible(false);
+
+        var canvasGo = new GameObject("ReadyToPlayCanvas", typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
+        canvasGo.transform.SetParent(transform, false);
+
+        var canvas = canvasGo.GetComponent<Canvas>();
+        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        canvas.sortingOrder = 3000;
+
+        var scaler = canvasGo.GetComponent<CanvasScaler>();
+        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        scaler.referenceResolution = new Vector2(1920, 1080);
+
+        readyToPlayPanel = new GameObject("ReadyToPlayPanel", typeof(Image));
+        readyToPlayPanel.transform.SetParent(canvasGo.transform, false);
+
+        var panelImage = readyToPlayPanel.GetComponent<Image>();
+        panelImage.color = new Color(0f, 0f, 0f, 0.9f);
+
+        var panelRect = readyToPlayPanel.GetComponent<RectTransform>();
+        panelRect.anchorMin = new Vector2(0.5f, 0.5f);
+        panelRect.anchorMax = new Vector2(0.5f, 0.5f);
+        panelRect.pivot = new Vector2(0.5f, 0.5f);
+        panelRect.anchoredPosition = new Vector2(0f, 120f);
+        panelRect.sizeDelta = new Vector2(680f, 400f);
+
+        var messageBox = new GameObject("ReadyMessageBox", typeof(Image));
+        messageBox.transform.SetParent(readyToPlayPanel.transform, false);
+        var messageBoxImage = messageBox.GetComponent<Image>();
+        messageBoxImage.color = new Color(0.06f, 0.06f, 0.06f, 0.82f);
+        var messageBoxRect = messageBox.GetComponent<RectTransform>();
+        messageBoxRect.anchorMin = new Vector2(0.5f, 1f);
+        messageBoxRect.anchorMax = new Vector2(0.5f, 1f);
+        messageBoxRect.pivot = new Vector2(0.5f, 1f);
+        messageBoxRect.anchoredPosition = new Vector2(0f, -22f);
+        messageBoxRect.sizeDelta = new Vector2(620f, 220f);
+
+        var title = CreatePanelLabel(messageBox.transform, "ReadyTitle", "Get Ready To Play", 36, new Vector2(0f, -28f));
+        title.alignment = TextAnchor.MiddleCenter;
+
+        var body = CreatePanelLabel(
+            messageBox.transform,
+            "ReadyBody",
+            "You are about to enter command operations.\nReview the board, then press OK to begin.",
+            20,
+            new Vector2(0f, -72f));
+        body.alignment = TextAnchor.UpperCenter;
+        body.rectTransform.sizeDelta = new Vector2(560f, 120f);
+
+        readySkipToggle = CreatePanelToggle(
+            readyToPlayPanel.transform,
+            "ReadySkipNextTimeToggle",
+            "Skip next time",
+            new Vector2(0f, -278f),
+            new Vector2(220f, 28f));
+        readySkipToggle.SetIsOnWithoutNotify(false);
+        readySkipToggle.onValueChanged.AddListener(OnReadySkipNextTimeChanged);
+
+        var okButton = CreatePanelButton(readyToPlayPanel.transform, "ReadyOkButton", "OK", new Vector2(0f, -336f), new Vector2(180f, 48f));
+        okButton.onClick.AddListener(ConfirmReadyToPlay);
+    }
+
+    private void OnReadySkipNextTimeChanged(bool isOn)
+    {
+        skipReadyNextTime = isOn;
+    }
+
+    private void ConfirmReadyToPlay()
+    {
+        if (readyToPlayPanel != null)
+        {
+            if (readySkipToggle != null)
+            {
+                readySkipToggle.onValueChanged.RemoveListener(OnReadySkipNextTimeChanged);
+                readySkipToggle = null;
+            }
+
+            var canvas = readyToPlayPanel.transform.parent != null
+                ? readyToPlayPanel.transform.parent.gameObject
+                : readyToPlayPanel;
+            Destroy(canvas);
+            readyToPlayPanel = null;
+        }
+
+        if (skipReadyNextTime)
+        {
+            PlayerPrefs.SetInt(SkipReadyScreenOncePrefKey, 1);
+        }
+        else
+        {
+            PlayerPrefs.DeleteKey(SkipReadyScreenOncePrefKey);
+        }
+
+        PlayerPrefs.Save();
+        skipReadyNextTime = false;
+
+        GameMenuController.SetPaused(false);
+
+        if (missionHudPanel != null && !missionEnded)
+        {
+            missionHudPanel.SetActive(true);
+        }
+
+        SetBoxCanvasVisible(true);
+
+        BeginOperationalStart();
+    }
+
+    private static void SetBoxCanvasVisible(bool visible)
+    {
+        var canvases = Resources.FindObjectsOfTypeAll<Canvas>();
+        if (canvases == null || canvases.Length == 0)
+        {
+            return;
+        }
+
+        for (var i = 0; i < canvases.Length; i++)
+        {
+            var canvas = canvases[i];
+            if (canvas == null)
+            {
+                continue;
+            }
+
+            var go = canvas.gameObject;
+            if (go == null || go.name != "BoxCanvas")
+            {
+                continue;
+            }
+
+            go.SetActive(visible);
+            return;
+        }
+    }
+
+    private static Toggle CreatePanelToggle(Transform parent, string name, string label, Vector2 anchoredPosition, Vector2 size)
+    {
+        var go = new GameObject(name, typeof(Toggle));
+        go.transform.SetParent(parent, false);
+
+        var rect = go.GetComponent<RectTransform>();
+        rect.anchorMin = new Vector2(0.5f, 1f);
+        rect.anchorMax = new Vector2(0.5f, 1f);
+        rect.pivot = new Vector2(0.5f, 1f);
+        rect.anchoredPosition = anchoredPosition;
+        rect.sizeDelta = size;
+
+        var toggle = go.GetComponent<Toggle>();
+
+        var bg = new GameObject("Background", typeof(Image));
+        bg.transform.SetParent(go.transform, false);
+        var bgRect = bg.GetComponent<RectTransform>();
+        bgRect.anchorMin = new Vector2(0f, 0.5f);
+        bgRect.anchorMax = new Vector2(0f, 0.5f);
+        bgRect.pivot = new Vector2(0f, 0.5f);
+        bgRect.anchoredPosition = Vector2.zero;
+        bgRect.sizeDelta = new Vector2(22f, 22f);
+        var bgImage = bg.GetComponent<Image>();
+        bgImage.color = new Color(1f, 1f, 1f, 0.92f);
+
+        var check = new GameObject("Checkmark", typeof(Image));
+        check.transform.SetParent(bg.transform, false);
+        var checkRect = check.GetComponent<RectTransform>();
+        checkRect.anchorMin = new Vector2(0.5f, 0.5f);
+        checkRect.anchorMax = new Vector2(0.5f, 0.5f);
+        checkRect.pivot = new Vector2(0.5f, 0.5f);
+        checkRect.anchoredPosition = Vector2.zero;
+        checkRect.sizeDelta = new Vector2(14f, 14f);
+        var checkImage = check.GetComponent<Image>();
+        checkImage.color = new Color(0.2f, 0.85f, 0.3f, 1f);
+
+        var labelGo = new GameObject("Label", typeof(Text));
+        labelGo.transform.SetParent(go.transform, false);
+        var labelRect = labelGo.GetComponent<RectTransform>();
+        labelRect.anchorMin = new Vector2(0f, 0f);
+        labelRect.anchorMax = new Vector2(1f, 1f);
+        labelRect.offsetMin = new Vector2(30f, 0f);
+        labelRect.offsetMax = Vector2.zero;
+
+        var labelText = labelGo.GetComponent<Text>();
+        var font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf") ?? Resources.GetBuiltinResource<Font>("Arial.ttf");
+        labelText.font = font;
+        labelText.fontSize = 18;
+        labelText.alignment = TextAnchor.MiddleLeft;
+        labelText.color = Color.white;
+        labelText.text = label;
+
+        toggle.graphic = checkImage;
+        toggle.targetGraphic = bgImage;
+        return toggle;
     }
 
     private static void DestroyIfExists(string objectName)
@@ -405,10 +700,67 @@ public class GameManager : MonoBehaviour
             yield break;
         }
 
+        var primaryMood = ResolveStartupMood();
+        var secondaryMood = primaryMood == NarrativeMood.Military
+            ? NarrativeMood.Mysterious
+            : NarrativeMood.Military;
+
+        var welcomePost = BuildWelcomePost(primaryMood);
+        var behaviorPost = BuildArchangelProtocolBriefPost(secondaryMood);
+
         queue.Publish(new BoxMessage(
             triggerKey: WelcomeTriggerKey,
             channel: BoxChannel.Thinking,
             severity: BoxSeverity.Info,
+            sourceTag: welcomePost.SourceTag,
+            title: welcomePost.Title,
+            body: welcomePost.Body));
+
+        queue.Publish(new BoxMessage(
+            triggerKey: ArchangelProtocolBriefTriggerKey,
+            channel: BoxChannel.Thinking,
+            severity: BoxSeverity.Info,
+            sourceTag: behaviorPost.SourceTag,
+            title: behaviorPost.Title,
+            body: behaviorPost.Body));
+    }
+
+    private NarrativeMood ResolveStartupMood()
+    {
+        if (!alternateIntroMoodEachSession)
+        {
+            return NarrativeMood.Military;
+        }
+
+        var stored = PlayerPrefs.GetInt(IntroMoodPrefKey, 0);
+        var mood = stored == 1 ? NarrativeMood.Mysterious : NarrativeMood.Military;
+
+        var next = mood == NarrativeMood.Military ? 1 : 0;
+        PlayerPrefs.SetInt(IntroMoodPrefKey, next);
+        PlayerPrefs.Save();
+
+        return mood;
+    }
+
+    private StartupPost BuildWelcomePost(NarrativeMood mood)
+    {
+        if (mood == NarrativeMood.Mysterious)
+        {
+            return new StartupPost(
+                sourceTag: "Whisper",
+                title: $"Welcome Back, Commander {commanderName}",
+                body:
+                    $"The sky is speaking again, Commander {commanderName}.\n" +
+                    "Signals hide intent; your choices reveal it.\n\n" +
+                    "Core controls:\n" +
+                    "1-3: Strategic Priority (Coverage / Research / Response)\n" +
+                    "1-4: Contact Response (Ignore / Track / Intercept / Dispatch)\n" +
+                    "Box Feed: Read 'Archangel Protocol Brief' posts for live intent clues\n" +
+                    "Esc: Dismiss non-interactive messages\n\n" +
+                    "Choose a priority. The pattern will answer.");
+        }
+
+        return new StartupPost(
             sourceTag: "Commander",
             title: $"Welcome, Commander {commanderName}",
             body:
@@ -417,8 +769,41 @@ public class GameManager : MonoBehaviour
                 "Core controls:\n" +
                 "1-3: Strategic Priority (Coverage / Research / Response)\n" +
                 "1-4: Contact Response (Ignore / Track / Intercept / Dispatch)\n" +
+                "Box Feed: Read 'Archangel Protocol Brief' posts for live intent clues\n" +
                 "Esc: Dismiss non-interactive messages\n\n" +
-                "Start by selecting your Strategic Priority. Good luck."));
+                "Start by selecting your Strategic Priority. Good luck.");
+    }
+
+    private static StartupPost BuildArchangelProtocolBriefPost(NarrativeMood mood)
+    {
+        if (mood == NarrativeMood.Mysterious)
+        {
+            return new StartupPost(
+                sourceTag: "Signals",
+                title: "Archangel Protocol Brief",
+                body:
+                    "Tone shift detected. Read behavior, not noise.\n" +
+                    "- Grey contact patterns usually mask intent through probes and misdirection.\n" +
+                    "- Dark patterns indicate pressure, tempo, and likely escalation.\n" +
+                    "- Solo signatures often lower immediate threat, but never zero.\n\n" +
+                    "Respond by confidence:\n" +
+                    "1) Track uncertainty.\n" +
+                    "2) Intercept hostile momentum.\n" +
+                    "3) Dispatch only when civilian risk is immediate.");
+        }
+
+        return new StartupPost(
+            sourceTag: "Intelligence",
+            title: "Archangel Protocol Brief",
+            body:
+                "Use behavior posts to infer intent before committing assets.\n" +
+                "- Grey activity often probes, misdirects, or observes.\n" +
+                "- Dark activity is high-risk; expect escalation pressure.\n" +
+                "- Solo crew estimate usually means lower immediate threat.\n\n" +
+                "Action guide:\n" +
+                "1) Track when confidence is low.\n" +
+                "2) Intercept when behavior trends hostile.\n" +
+                "3) Dispatch when risk to civilians is immediate.");
     }
 
     private void Update()
@@ -524,22 +909,123 @@ public class GameManager : MonoBehaviour
 
         var ufo = cachedUfoManager != null ? cachedUfoManager : GetComponent<UFOManager>();
         cachedUfoManager = ufo;
+        EvaluateDynamicMoodShift(ufo);
+
         if (ufo != null && ufo.PermitRisk >= permitRiskFailThreshold)
         {
             EndMission(MissionEndReason.PermitRiskFailure, ufo);
             return;
         }
 
-        if (ufo != null && enableConsecutiveExpireFail && ufo.ConsecutiveExpiredResponsesCount >= consecutiveExpireFailThreshold)
+        if (ufo != null && enableConsecutiveExpireFail)
         {
-            EndMission(MissionEndReason.ConsecutiveExpireFailure, ufo);
-            return;
+            var streak = ufo.ConsecutiveExpiredResponsesCount;
+            var warningAt = Mathf.Max(1, consecutiveExpireFailThreshold - 1);
+
+            if (consecutiveExpireFailThreshold > 1 && streak >= warningAt && streak < consecutiveExpireFailThreshold)
+            {
+                if (!expireStreakWarningIssued)
+                {
+                    PublishExpireStreakWarning(streak, consecutiveExpireFailThreshold);
+                    cuePlayer?.PlayExpireStreakWarning();
+                    expireStreakWarningIssued = true;
+                }
+            }
+            else if (streak < warningAt)
+            {
+                expireStreakWarningIssued = false;
+            }
+
+            if (streak >= consecutiveExpireFailThreshold)
+            {
+                EndMission(MissionEndReason.ConsecutiveExpireFailure, ufo);
+                return;
+            }
         }
 
         if (missionElapsedSeconds >= missionDurationSeconds)
         {
             EndMission(MissionEndReason.Victory, ufo);
         }
+    }
+
+    private void EvaluateDynamicMoodShift(UFOManager ufo)
+    {
+        if (!enableDynamicMoodShiftPosts || missionEnded || ufo == null)
+        {
+            return;
+        }
+
+        var warningAt = Mathf.Max(1, consecutiveExpireFailThreshold - 1);
+        var hasStreakPressure = enableConsecutiveExpireFail
+            && consecutiveExpireFailThreshold > 1
+            && ufo.ConsecutiveExpiredResponsesCount >= warningAt;
+        var hasRiskPressure = ufo.PermitRisk >= moodShiftPermitRiskThreshold;
+        var shouldGoMysterious = hasRiskPressure || hasStreakPressure;
+
+        var recoveredRisk = ufo.PermitRisk <= moodShiftPermitRiskRecoveryThreshold;
+        var recoveredStreak = !enableConsecutiveExpireFail || ufo.ConsecutiveExpiredResponsesCount <= 0;
+        var shouldReturnMilitary = recoveredRisk && recoveredStreak;
+
+        if (activeMissionMood == NarrativeMood.Military && shouldGoMysterious)
+        {
+            activeMissionMood = NarrativeMood.Mysterious;
+            PublishMoodShiftMysterious(ufo);
+            return;
+        }
+
+        if (activeMissionMood == NarrativeMood.Mysterious && shouldReturnMilitary)
+        {
+            activeMissionMood = NarrativeMood.Military;
+            PublishMoodShiftMilitary(ufo);
+        }
+    }
+
+    private void PublishMoodShiftMysterious(UFOManager ufo)
+    {
+        var queue = BoxMessageQueue.Instance != null
+            ? BoxMessageQueue.Instance
+            : UnityEngine.Object.FindAnyObjectByType<BoxMessageQueue>();
+        if (queue == null)
+        {
+            return;
+        }
+
+        var permitRisk = Mathf.RoundToInt(ufo.PermitRisk);
+        var streak = ufo.ConsecutiveExpiredResponsesCount;
+        queue.Publish(new BoxMessage(
+            triggerKey: ArchangelProtocolEngagedTriggerKey,
+            channel: BoxChannel.Thinking,
+            severity: BoxSeverity.Warn,
+            sourceTag: "Archangel",
+            title: "Archangel Protocol Engaged",
+            body:
+                $"Pressure pattern rising: PermitRisk {permitRisk}. Miss streak {streak}.\n" +
+                "Do not chase every signal. Track uncertainty, then cut only confirmed threats."));
+        cuePlayer?.PlayMoodShiftMysterious();
+    }
+
+    private void PublishMoodShiftMilitary(UFOManager ufo)
+    {
+        var queue = BoxMessageQueue.Instance != null
+            ? BoxMessageQueue.Instance
+            : UnityEngine.Object.FindAnyObjectByType<BoxMessageQueue>();
+        if (queue == null)
+        {
+            return;
+        }
+
+        var permitRisk = Mathf.RoundToInt(ufo.PermitRisk);
+        queue.Publish(new BoxMessage(
+            triggerKey: ArchangelProtocolDisengagedTriggerKey,
+            channel: BoxChannel.Thinking,
+            severity: BoxSeverity.Info,
+            sourceTag: "Operations",
+            title: "Archangel Protocol Stand Down",
+            body:
+                $"Pressure easing: PermitRisk {permitRisk}.\n" +
+                "Maintain discipline. Resume standard response doctrine and preserve readiness."));
+        cuePlayer?.PlayMoodShiftMilitary();
     }
 
     private void EndMission(MissionEndReason reason, UFOManager ufo)
@@ -635,6 +1121,7 @@ public class GameManager : MonoBehaviour
         missionHudLabel.font = font;
         missionHudLabel.fontSize = 19;
         missionHudLabel.alignment = TextAnchor.UpperLeft;
+        missionHudLabel.supportRichText = true;
         missionHudLabel.horizontalOverflow = HorizontalWrapMode.Wrap;
         missionHudLabel.verticalOverflow = VerticalWrapMode.Overflow;
         missionHudLabel.color = Color.white;
@@ -670,23 +1157,68 @@ public class GameManager : MonoBehaviour
                 $"MISSION\n" +
                 $"Time Left: {minutes}:{seconds:00}\n" +
                 $"Score: {score}  Best: {bestScore}\n" +
-                $"Priority: {currentPriority}";
+                $"Priority: {currentPriority}\n" +
+                BuildExpireStreakHudText(null);
             return;
         }
 
         var pausedSuffix = GameMenuController.IsPaused ? "  [PAUSED]" : string.Empty;
         var opsSuffix = freeOpsMode ? "  [FREE OPS]" : string.Empty;
+        var archangelSuffix = activeMissionMood == NarrativeMood.Mysterious ? "  [ARCHANGEL PROTOCOL]" : string.Empty;
         var medalText = MedalTierToLabel(medalTier);
         var progressText = nextMedalTarget > 0
             ? $"Next Medal At: {nextMedalTarget}"
             : "Top Medal Reached";
         missionHudLabel.text =
-            $"MISSION{pausedSuffix}{opsSuffix}\n" +
+            $"MISSION{pausedSuffix}{opsSuffix}{archangelSuffix}\n" +
             $"Time Left: {minutes}:{seconds:00}  Score: {score}\n" +
             $"Best: {bestScore}  Medal: {medalText}\n" +
             $"Priority: {currentPriority}  {progressText}\n" +
             $"Contacts: {ufo.TotalContactsSpawned}  Responses: {ufo.RespondedContactsCount}  Missed: {ufo.ExpiredResponsesCount}\n" +
-            $"Education: {Mathf.RoundToInt(ufo.Education)}  PermitRisk: {Mathf.RoundToInt(ufo.PermitRisk)}";
+            $"Education: {Mathf.RoundToInt(ufo.Education)}  PermitRisk: {Mathf.RoundToInt(ufo.PermitRisk)}\n" +
+            BuildExpireStreakHudText(ufo);
+    }
+
+    private string BuildExpireStreakHudText(UFOManager ufo)
+    {
+        if (!enableConsecutiveExpireFail)
+        {
+            return "Miss Streak: OFF";
+        }
+
+        var streak = ufo != null ? ufo.ConsecutiveExpiredResponsesCount : 0;
+        var threshold = Mathf.Max(1, consecutiveExpireFailThreshold);
+
+        var color = "#A7E3FF";
+        if (streak >= threshold - 1)
+        {
+            color = "#FF8A8A";
+        }
+        else if (streak >= Mathf.Max(1, threshold - 2))
+        {
+            color = "#FFD27A";
+        }
+
+        return $"Miss Streak: <color={color}>{streak}/{threshold}</color>";
+    }
+
+    private void PublishExpireStreakWarning(int streak, int threshold)
+    {
+        var queue = BoxMessageQueue.Instance != null
+            ? BoxMessageQueue.Instance
+            : UnityEngine.Object.FindAnyObjectByType<BoxMessageQueue>();
+        if (queue == null)
+        {
+            return;
+        }
+
+        queue.Publish(new BoxMessage(
+            triggerKey: ExpireStreakWarningTriggerKey,
+            channel: BoxChannel.Info,
+            severity: BoxSeverity.Critical,
+            sourceTag: "Operations",
+            title: "Command Warning",
+            body: $"Response miss streak is {streak}/{threshold}.\nOne more missed response will fail the mission."));
     }
 
     private int CalculateMissionScore(UFOManager ufo)
@@ -782,7 +1314,7 @@ public class GameManager : MonoBehaviour
         panelRect.anchorMax = new Vector2(0.5f, 0.5f);
         panelRect.pivot = new Vector2(0.5f, 0.5f);
         panelRect.anchoredPosition = Vector2.zero;
-        panelRect.sizeDelta = new Vector2(560f, 380f);
+        panelRect.sizeDelta = new Vector2(560f, 460f);
 
         var headingText = reason == MissionEndReason.Victory
             ? $"Mission Complete, {commanderName}"
@@ -796,16 +1328,18 @@ public class GameManager : MonoBehaviour
         badge.color = GetMedalColor(medalTier);
 
         var summary = BuildMissionSummary(reason, ufo, score, bestScore, isNewBest);
-        var summaryLabel = CreatePanelLabel(missionEndPanel.transform, "Summary", summary, 18, new Vector2(0f, -210f));
+        var summaryLabel = CreatePanelLabel(missionEndPanel.transform, "Summary", summary, 18, new Vector2(0f, -156f));
         summaryLabel.alignment = TextAnchor.UpperCenter;
+        var summaryRect = summaryLabel.rectTransform;
+        summaryRect.sizeDelta = new Vector2(500f, 210f);
 
         var primaryButtonText = reason == MissionEndReason.Victory ? "Play Again" : "Retry";
         var secondaryButtonText = reason == MissionEndReason.Victory ? "Continue Ops" : "Review";
 
-        var retryButton = CreatePanelButton(missionEndPanel.transform, "PrimaryActionButton", primaryButtonText, new Vector2(-95f, -322f), new Vector2(170f, 46f));
+        var retryButton = CreatePanelButton(missionEndPanel.transform, "PrimaryActionButton", primaryButtonText, new Vector2(-95f, -392f), new Vector2(170f, 46f));
         retryButton.onClick.AddListener(RestartMission);
 
-        var secondaryButton = CreatePanelButton(missionEndPanel.transform, "SecondaryActionButton", secondaryButtonText, new Vector2(95f, -322f), new Vector2(170f, 46f));
+        var secondaryButton = CreatePanelButton(missionEndPanel.transform, "SecondaryActionButton", secondaryButtonText, new Vector2(95f, -392f), new Vector2(170f, 46f));
         if (reason == MissionEndReason.Victory)
         {
             secondaryButton.onClick.AddListener(EnterFreeOpsMode);

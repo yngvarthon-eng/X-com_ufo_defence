@@ -9,6 +9,9 @@ public class GameMenuController : MonoBehaviour
     private const string SaveSlotKey = "xcon.save.slot1";
     private const string AutoLoadPriorityPrefKey = "xcon.save.autoload.priority";
     private const string MapStylePrefKey = "xcon.worldmap.styleIndex";
+    private const string UfoSpawnRatePrefKey = "xcon.ufo.spawnRatePerMinute";
+    private const float UfoSpawnRateMin = 0f;
+    private const float UfoSpawnRateMax = 1.2f;
 
     [Serializable]
     private struct SaveData
@@ -40,6 +43,9 @@ public class GameMenuController : MonoBehaviour
     private InputField commanderNameInput;
     private Slider sfxVolumeSlider;
     private Text sfxVolumeValueLabel;
+    private Slider ufoSpawnRateSlider;
+    private Text ufoSpawnRateValueLabel;
+    private Button mapStyleButton;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     private static void ResetPauseStateOnSubsystemRegistration()
@@ -105,7 +111,7 @@ public class GameMenuController : MonoBehaviour
         menuPanelRect.anchorMax = new Vector2(1f, 1f);
         menuPanelRect.pivot = new Vector2(1f, 1f);
         menuPanelRect.anchoredPosition = new Vector2(-20f, -70f);
-        menuPanelRect.sizeDelta = new Vector2(320f, 402f);
+        menuPanelRect.sizeDelta = new Vector2(320f, 510f);
 
         CreateTextLabel(menuPanel.transform, "CommanderLabel", "Commander Name", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -22f), new Vector2(260f, 24f), 16);
 
@@ -124,16 +130,32 @@ public class GameMenuController : MonoBehaviour
 
         SyncAudioControlsFromState();
 
-        var newGameButton = CreateButton(menuPanel.transform, "NewGameButton", "New Game", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -194f), new Vector2(260f, 40f));
+        CreateTextLabel(menuPanel.transform, "UfoSpawnRateLabel", "UFO Spawning", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -184f), new Vector2(260f, 22f), 16);
+        ufoSpawnRateSlider = CreateSlider(menuPanel.transform, "UfoSpawnRateSlider", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -208f), new Vector2(190f, 22f));
+        ufoSpawnRateSlider.minValue = UfoSpawnRateMin;
+        ufoSpawnRateSlider.maxValue = UfoSpawnRateMax;
+        ufoSpawnRateSlider.onValueChanged.AddListener(OnUfoSpawnRateChanged);
+
+        ufoSpawnRateValueLabel = CreateTextLabel(menuPanel.transform, "UfoSpawnRateValueLabel", "0.24/min", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(112f, -208f), new Vector2(66f, 22f), 14);
+        ufoSpawnRateValueLabel.alignment = TextAnchor.MiddleRight;
+
+        SyncUfoSpawningControlsFromState();
+
+        CreateTextLabel(menuPanel.transform, "MapStyleMenuLabel", "Map Style", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -238f), new Vector2(260f, 22f), 16);
+        mapStyleButton = CreateButton(menuPanel.transform, "MapStyleMenuButton", "Map Style: Round Sphere", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -266f), new Vector2(260f, 36f));
+        mapStyleButton.onClick.AddListener(OnMapStyleButtonClicked);
+        SyncMapStyleControlFromState();
+
+        var newGameButton = CreateButton(menuPanel.transform, "NewGameButton", "New Game", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -306f), new Vector2(260f, 40f));
         newGameButton.onClick.AddListener(NewGame);
 
-        var loadButton = CreateButton(menuPanel.transform, "LoadButton", "Load", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -240f), new Vector2(260f, 40f));
+        var loadButton = CreateButton(menuPanel.transform, "LoadButton", "Load", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -352f), new Vector2(260f, 40f));
         loadButton.onClick.AddListener(LoadGame);
 
-        var saveButton = CreateButton(menuPanel.transform, "SaveButton", "Save", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -286f), new Vector2(260f, 40f));
+        var saveButton = CreateButton(menuPanel.transform, "SaveButton", "Save", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -398f), new Vector2(260f, 40f));
         saveButton.onClick.AddListener(SaveGame);
 
-        var quitButton = CreateButton(menuPanel.transform, "QuitButton", "Quit", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -332f), new Vector2(260f, 40f));
+        var quitButton = CreateButton(menuPanel.transform, "QuitButton", "Quit", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -444f), new Vector2(260f, 40f));
         quitButton.onClick.AddListener(QuitGame);
 
         menuPanel.SetActive(false);
@@ -686,5 +708,101 @@ public class GameMenuController : MonoBehaviour
         }
 
         sfxVolumeValueLabel.text = $"{Mathf.RoundToInt(Mathf.Clamp01(value) * 100f)}%";
+    }
+
+    private void SyncUfoSpawningControlsFromState()
+    {
+        if (ufoSpawnRateSlider == null)
+        {
+            return;
+        }
+
+        var ufoManager = UnityEngine.Object.FindAnyObjectByType<UFOManager>();
+        var storedRate = PlayerPrefs.GetFloat(UfoSpawnRatePrefKey, -1f);
+        var rate = storedRate >= 0f
+            ? storedRate
+            : (ufoManager != null ? ufoManager.BaseContactsPerMinute : 0.24f);
+
+        var clamped = Mathf.Clamp(rate, UfoSpawnRateMin, UfoSpawnRateMax);
+        if (ufoManager != null)
+        {
+            ufoManager.SetBaseContactsPerMinute(clamped);
+        }
+        ufoSpawnRateSlider.SetValueWithoutNotify(clamped);
+        UpdateUfoSpawnRateLabel(clamped);
+    }
+
+    private void OnUfoSpawnRateChanged(float value)
+    {
+        var clamped = Mathf.Clamp(value, UfoSpawnRateMin, UfoSpawnRateMax);
+        var ufoManager = UnityEngine.Object.FindAnyObjectByType<UFOManager>();
+        if (ufoManager != null)
+        {
+            ufoManager.SetBaseContactsPerMinute(clamped);
+        }
+
+        PlayerPrefs.SetFloat(UfoSpawnRatePrefKey, clamped);
+        PlayerPrefs.Save();
+        UpdateUfoSpawnRateLabel(clamped);
+    }
+
+    private void UpdateUfoSpawnRateLabel(float value)
+    {
+        if (ufoSpawnRateValueLabel == null)
+        {
+            return;
+        }
+
+        ufoSpawnRateValueLabel.text = $"{Mathf.Clamp(value, UfoSpawnRateMin, UfoSpawnRateMax):0.00}/m";
+    }
+
+    private void SyncMapStyleControlFromState()
+    {
+        var current = PlayerPrefs.GetInt(MapStylePrefKey, 0);
+        var manager = UnityEngine.Object.FindAnyObjectByType<WorldMapBackgroundManager>();
+        if (manager != null)
+        {
+            current = manager.CurrentMapStyleIndex;
+        }
+
+        UpdateMapStyleButtonLabel(current);
+    }
+
+    private void OnMapStyleButtonClicked()
+    {
+        var manager = UnityEngine.Object.FindAnyObjectByType<WorldMapBackgroundManager>();
+        var current = manager != null ? manager.CurrentMapStyleIndex : PlayerPrefs.GetInt(MapStylePrefKey, 0);
+        var next = (current + 1) % 3;
+
+        PlayerPrefs.SetInt(MapStylePrefKey, next);
+        PlayerPrefs.Save();
+
+        if (manager != null)
+        {
+            manager.ApplyMapStyleIndex(next, persist: true, immediate: false);
+        }
+
+        UpdateMapStyleButtonLabel(next);
+    }
+
+    private void UpdateMapStyleButtonLabel(int index)
+    {
+        if (mapStyleButton == null)
+        {
+            return;
+        }
+
+        var label = index switch
+        {
+            1 => "Flat Oval",
+            2 => "Flat",
+            _ => "Round Sphere",
+        };
+
+        var text = mapStyleButton.GetComponentInChildren<Text>();
+        if (text != null)
+        {
+            text.text = $"Map Style: {label}";
+        }
     }
 }

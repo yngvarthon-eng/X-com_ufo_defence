@@ -19,6 +19,8 @@ public class WorldMapBackgroundManager : MonoBehaviour
     private const string PausePlayButtonObjectName = "PausePlayButton";
     private const string VolumeButtonObjectName = "VolumeButton";
     private const string MapStylePrefKey = "xcon.worldmap.styleIndex";
+    private const float UtilityButtonVerticalSpacing = 38f;
+    private const float UtilityButtonsDownOffset = 18f;
 
     [Header("World Map Sprites")]
     [SerializeField] private Sprite roundSphereMap;
@@ -82,6 +84,8 @@ public class WorldMapBackgroundManager : MonoBehaviour
         ResolveReferences();
         EnsurePausePlayButtonExists();
         EnsureVolumeButtonExists();
+        ApplyUtilityButtonLayout();
+        DisableStandaloneMapSelectorUi();
         ApplyLayoutSettings();
         RefreshCenterGuideLine();
 
@@ -92,29 +96,7 @@ public class WorldMapBackgroundManager : MonoBehaviour
             { 2, flatMap }
         };
 
-        if (mapDropdown != null)
-        {
-            mapDropdown.options.Clear();
-            mapDropdown.options.Add(new Dropdown.OptionData("Round Sphere"));
-            mapDropdown.options.Add(new Dropdown.OptionData("Flat Oval"));
-            mapDropdown.options.Add(new Dropdown.OptionData("Flat"));
-
-            var startupIndex = GetStartupMapIndex();
-            // Keep the visible selection in sync with the selected startup background.
-            mapDropdown.SetValueWithoutNotify(startupIndex);
-            mapDropdown.onValueChanged.AddListener(OnMapDropdownChanged);
-
-            SetMapBackground(startupIndex, immediate: true);
-        }
-        else
-        {
-            SetMapBackground(GetStartupMapIndex(), immediate: true);
-        }
-
-        if (resetMapStyleButton != null)
-        {
-            resetMapStyleButton.onClick.AddListener(ResetMapStyleToDefault);
-        }
+        SetMapBackground(GetStartupMapIndex(), immediate: true);
 
         if (pausePlayButton != null)
         {
@@ -137,16 +119,6 @@ public class WorldMapBackgroundManager : MonoBehaviour
         {
             StopCoroutine(fadeTransitionCoroutine);
             fadeTransitionCoroutine = null;
-        }
-
-        if (mapDropdown != null)
-        {
-            mapDropdown.onValueChanged.RemoveListener(OnMapDropdownChanged);
-        }
-
-        if (resetMapStyleButton != null)
-        {
-            resetMapStyleButton.onClick.RemoveListener(ResetMapStyleToDefault);
         }
 
         if (pausePlayButton != null)
@@ -186,6 +158,50 @@ public class WorldMapBackgroundManager : MonoBehaviour
     {
         SaveSelectedMapIndex(index);
         SetMapBackground(index, immediate: false);
+    }
+
+    private void DisableStandaloneMapSelectorUi()
+    {
+        if (mapDropdown != null)
+        {
+            mapDropdown.gameObject.SetActive(false);
+        }
+
+        if (resetMapStyleButton != null)
+        {
+            resetMapStyleButton.gameObject.SetActive(false);
+        }
+    }
+
+    public int CurrentMapStyleIndex
+    {
+        get
+        {
+            if (currentMapIndex >= 0)
+            {
+                return currentMapIndex;
+            }
+
+            return GetStartupMapIndex();
+        }
+    }
+
+    public int MapStyleCount => 3;
+
+    public void ApplyMapStyleIndex(int index, bool persist = true, bool immediate = false)
+    {
+        var clamped = Mathf.Clamp(index, 0, MapStyleCount - 1);
+        if (persist)
+        {
+            SaveSelectedMapIndex(clamped);
+        }
+
+        if (mapDropdown != null)
+        {
+            mapDropdown.SetValueWithoutNotify(clamped);
+        }
+
+        SetMapBackground(clamped, immediate);
     }
 
     public void ResetMapStyleToDefault()
@@ -351,7 +367,7 @@ public class WorldMapBackgroundManager : MonoBehaviour
             cloneRect.anchorMax = templateRect.anchorMax;
             cloneRect.pivot = templateRect.pivot;
             cloneRect.sizeDelta = templateRect.sizeDelta;
-            cloneRect.anchoredPosition = templateRect.anchoredPosition + new Vector2(0f, 38f);
+            cloneRect.anchoredPosition = templateRect.anchoredPosition;
         }
 
         pausePlayButton = clone.GetComponent<Button>();
@@ -382,11 +398,44 @@ public class WorldMapBackgroundManager : MonoBehaviour
             cloneRect.anchorMax = templateRect.anchorMax;
             cloneRect.pivot = templateRect.pivot;
             cloneRect.sizeDelta = templateRect.sizeDelta;
-            cloneRect.anchoredPosition = templateRect.anchoredPosition + new Vector2(0f, 38f);
+            cloneRect.anchoredPosition = templateRect.anchoredPosition;
         }
 
         volumeButton = clone.GetComponent<Button>();
         RefreshVolumeButtonLabel();
+    }
+
+    private void ApplyUtilityButtonLayout()
+    {
+        if (resetMapStyleButton == null)
+        {
+            return;
+        }
+
+        if (!resetMapStyleButton.TryGetComponent<RectTransform>(out var baseRect))
+        {
+            return;
+        }
+
+        var basePosition = baseRect.anchoredPosition + new Vector2(0f, -UtilityButtonsDownOffset);
+
+        if (pausePlayButton != null && pausePlayButton.TryGetComponent<RectTransform>(out var pauseRect))
+        {
+            pauseRect.anchorMin = baseRect.anchorMin;
+            pauseRect.anchorMax = baseRect.anchorMax;
+            pauseRect.pivot = baseRect.pivot;
+            pauseRect.sizeDelta = baseRect.sizeDelta;
+            pauseRect.anchoredPosition = basePosition;
+        }
+
+        if (volumeButton != null && volumeButton.TryGetComponent<RectTransform>(out var volumeRect))
+        {
+            volumeRect.anchorMin = baseRect.anchorMin;
+            volumeRect.anchorMax = baseRect.anchorMax;
+            volumeRect.pivot = baseRect.pivot;
+            volumeRect.sizeDelta = baseRect.sizeDelta;
+            volumeRect.anchoredPosition = basePosition + new Vector2(0f, -UtilityButtonVerticalSpacing);
+        }
     }
 
     private void TogglePausePlay()

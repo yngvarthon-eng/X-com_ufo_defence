@@ -1983,12 +1983,24 @@ MonoBehaviour:
   backgroundImage: {fileID: 0}
   mapDropdown: {fileID: 0}
   resetMapStyleButton: {fileID: 0}
+  pausePlayButton: {fileID: 0}
+  volumeButton: {fileID: 0}
   enableFadeTransitions: 1
   fadeDurationSeconds: 0.225
   forcePreserveAspect: 1
   forceSimpleImageType: 1
   useAspectRatioFitter: 1
   aspectMode: 3
+  normalizeMapCoverage: 1
+  normalizedCoverageZoom: 1.02
+  showCenterGuideLine: 1
+  guideLineOrientation: 0
+  guideLineCurvature: 10
+  guideLineThickness: 2
+  guideLineLengthNormalized: 0.92
+  guideLineColor: {r: 0.9, g: 0.95, b: 1, a: 0.55}
+  guideTopTint: {r: 1, g: 1, b: 1, a: 0.12}
+  guideBottomTint: {r: 0, g: 0, b: 0, a: 0.16}
 --- !u!4 &2035776284
 Transform:
   m_ObjectHideFlags: 0
@@ -2083,8 +2095,22 @@ MonoBehaviour:
   useSmugglerPrefabAsDefaultVisual: 1
   spawnUfoVisuals: 1
   ufoVisualSpawnYOffset: 0
+  autoNormalizeUfoVisualSize: 1
+  targetUfoVisualSize: 3
   destroyUfoVisualOnIntercept: 1
   interceptDestroyDelaySeconds: 1
+  dimWorldMapBackgroundWhileUfoVisible: 1
+  worldMapBackgroundDimAlpha: 0.45
+  animateAndExpireUfoVisuals: 1
+  useResponseTimeoutForVisualLifetime: 1
+  ufoVisualLifetimeSeconds: 20
+  ufoVisualTravelDistance: 25
+  keepAnimatedUfoInCameraView: 1
+  ufoViewportMargin: 0.18
+  ufoStartDepthFromCamera: 10
+  ufoEndDepthFromCamera: 40
+  ufoVisualStartScaleMultiplier: 1.8
+  ufoVisualEndScaleMultiplier: 0.3
   enableAutoSpawn: 1
   baseContactsPerMinute: 0.24
   minAutoSpawnIntervalSeconds: 12
@@ -2095,6 +2121,7 @@ MonoBehaviour:
   escalationRateMultiplierPerPressure: 0.16
   permitRiskRateMultiplier: 0.28
   enableResponseChoices: 1
+  responseChoiceDelaySeconds: 1.2
   responseChoiceTimeoutSeconds: 26
   maxStoredContacts: 128
   education: 5
@@ -2118,6 +2145,8 @@ MonoBehaviour:
   debugShowPriorityEffectsInBoxes: 1
   debugLogPriorityEffects: 0
   debugLogUfoEvents: 0
+  debugEnableSpawnHotkey: 1
+  debugSpawnDistanceFromCamera: 14
 --- !u!114 &2044924458
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2131,6 +2160,26 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GameManager
   currentPriority: 1
+  defaultCommanderName: Commander
+  alternateIntroMoodEachSession: 1
+  enableMissionEndConditions: 1
+  missionDurationSeconds: 1200
+  permitRiskFailThreshold: 100
+  pauseGameWhenMissionEnds: 1
+  enableConsecutiveExpireFail: 1
+  consecutiveExpireFailThreshold: 3
+  enableDynamicMoodShiftPosts: 1
+  moodShiftPermitRiskThreshold: 65
+  moodShiftPermitRiskRecoveryThreshold: 40
+  responseScoreWeight: 150
+  contactScoreWeight: 25
+  educationScoreWeight: 12
+  missedResponsePenaltyWeight: 90
+  permitRiskPenaltyWeight: 9
+  fallbackTimeScoreMultiplier: 0.8
+  bronzeScoreThreshold: 2500
+  silverScoreThreshold: 4200
+  goldScoreThreshold: 6200
 --- !u!4 &2044924459
 Transform:
   m_ObjectHideFlags: 0

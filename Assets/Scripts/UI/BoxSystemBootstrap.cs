@@ -65,7 +65,16 @@ namespace XCon.UI.Boxes
         private Text bodyText;
         private Text queueText;
         private GameObject panel;
+        private Image panelImage;
         private readonly List<BoxMessage> queuedBuffer = new();
+
+        // Panel and title colours per severity, so serious events stand out at a glance.
+        private static readonly Color InfoPanelColor = new Color(0f, 0f, 0f, 0.65f);
+        private static readonly Color WarnPanelColor = new Color(0.38f, 0.24f, 0.02f, 0.82f);
+        private static readonly Color CriticalPanelColor = new Color(0.45f, 0.04f, 0.04f, 0.86f);
+        private static readonly Color InfoTitleColor = Color.white;
+        private static readonly Color WarnTitleColor = new Color(1f, 0.86f, 0.55f, 1f);
+        private static readonly Color CriticalTitleColor = new Color(1f, 0.72f, 0.68f, 1f);
         private BoxMessageQueue queue;
         private bool subscribed;
 
@@ -85,12 +94,12 @@ namespace XCon.UI.Boxes
             panel = new GameObject("BoxPanel", typeof(Image));
             panel.transform.SetParent(canvasGo.transform, false);
 
-            var panelImage = panel.GetComponent<Image>();
-            panelImage.color = new Color(0f, 0f, 0f, 0.65f);
+            panelImage = panel.GetComponent<Image>();
+            panelImage.color = InfoPanelColor;
 
             var panelRect = panel.GetComponent<RectTransform>();
-            panelRect.anchorMin = new Vector2(0.02f, 0.02f);
-            panelRect.anchorMax = new Vector2(0.45f, 0.42f);
+            panelRect.anchorMin = new Vector2(0.02f, 0.00f);
+            panelRect.anchorMax = new Vector2(0.45f, 0.32f);
             panelRect.offsetMin = Vector2.zero;
             panelRect.offsetMax = Vector2.zero;
 
@@ -258,6 +267,32 @@ namespace XCon.UI.Boxes
             titleText.text = m.Title;
             bodyText.text = m.Body;
             sourceText.text = string.IsNullOrWhiteSpace(m.SourceTag) ? $"{m.Channel}" : $"{m.Channel} · {m.SourceTag} · {m.Severity}";
+            ApplySeverityStyle(m);
+        }
+
+        private void ApplySeverityStyle(BoxMessage m)
+        {
+            var severity = m.Channel == BoxChannel.Thinking ? BoxSeverity.Info : m.Severity;
+
+            if (panelImage)
+            {
+                panelImage.color = severity switch
+                {
+                    BoxSeverity.Critical => CriticalPanelColor,
+                    BoxSeverity.Warn => WarnPanelColor,
+                    _ => InfoPanelColor,
+                };
+            }
+
+            if (titleText)
+            {
+                titleText.color = severity switch
+                {
+                    BoxSeverity.Critical => CriticalTitleColor,
+                    BoxSeverity.Warn => WarnTitleColor,
+                    _ => InfoTitleColor,
+                };
+            }
         }
 
         private void Refresh(BoxMessageQueue queue)
@@ -280,6 +315,7 @@ namespace XCon.UI.Boxes
             titleText.text = m.Title;
             bodyText.text = m.Body;
             sourceText.text = string.IsNullOrWhiteSpace(m.SourceTag) ? $"{m.Channel}" : $"{m.Channel} · {m.SourceTag} · {m.Severity}";
+            ApplySeverityStyle(m);
 
             queuedBuffer.Clear();
             queue.CopyQueuedMessages(queuedBuffer);

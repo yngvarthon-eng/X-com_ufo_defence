@@ -36,7 +36,7 @@ public class GameManager : MonoBehaviour
     private const string IntroMoodPrefKey = "xcon.intro.moodIndex";
     private const string AutoLoadPriorityPrefKey = "xcon.save.autoload.priority";
     public const string AutoLoadStatePrefKey = "xcon.save.autoload.state";
-    private const string BestScorePrefKey = "xcon.mission.bestScore";
+    private static string BestScorePrefKey => Difficulty.BestScorePrefKey(Difficulty.Active);
     private const string CommanderNamePrefKey = "xcon.player.commanderName";
     private const string SkipReadyScreenOncePrefKey = "xcon.startup.skipReadyScreenOnce";
 
@@ -61,19 +61,22 @@ public class GameManager : MonoBehaviour
         public int respondedContactsCount;
         public int expiredResponsesCount;
         public int consecutiveExpiredResponsesCount;
+        public int muleCargoSpills;
+        public int warheadsSeized;
+        public int warheadsDelivered;
         public string commanderName;
     }
 
     [Header("Mission")]
     [SerializeField] private bool enableMissionEndConditions = true;
-    [Min(30f)]
-    [SerializeField] private float missionDurationSeconds = 20f * 60f;
+    // Mission length and miss-streak limit come from the difficulty preset (see Difficulty.cs).
     [Range(10f, 100f)]
     [SerializeField] private float permitRiskFailThreshold = 100f;
     [SerializeField] private bool pauseGameWhenMissionEnds = true;
     [SerializeField] private bool enableConsecutiveExpireFail = true;
-    [Min(1)]
-    [SerializeField] private int consecutiveExpireFailThreshold = 3;
+
+    private static float missionDurationSeconds => Difficulty.ActivePreset.MissionDurationSeconds;
+    private static int consecutiveExpireFailThreshold => Mathf.Max(1, Difficulty.ActivePreset.ConsecutiveExpireFailThreshold);
 
     [Header("Narrative")]
     [SerializeField] private bool enableDynamicMoodShiftPosts = true;
@@ -88,12 +91,15 @@ public class GameManager : MonoBehaviour
     [SerializeField] private int educationScoreWeight = 12;
     [SerializeField] private int missedResponsePenaltyWeight = 90;
     [SerializeField] private int permitRiskPenaltyWeight = 9;
+    [SerializeField] private int warheadSeizedBonusWeight = 500;
+    [SerializeField] private int cargoSpillPenaltyWeight = 120;
+    [SerializeField] private int warheadDeliveredPenaltyWeight = 600;
     [SerializeField] private float fallbackTimeScoreMultiplier = 0.8f;
 
     [Header("Medals")]
-    [SerializeField] private int bronzeScoreThreshold = 2500;
-    [SerializeField] private int silverScoreThreshold = 4200;
-    [SerializeField] private int goldScoreThreshold = 6200;
+    [SerializeField] private int bronzeScoreThreshold = 1900;
+    [SerializeField] private int silverScoreThreshold = 3150;
+    [SerializeField] private int goldScoreThreshold = 4650;
 
     private float missionElapsedSeconds;
     private bool missionEnded;
@@ -108,6 +114,7 @@ public class GameManager : MonoBehaviour
     private NarrativeMood activeMissionMood = NarrativeMood.Military;
     private GameObject readyToPlayPanel;
     private Toggle readySkipToggle;
+    private Button readyDifficultyButton;
     private bool skipReadyNextTime;
     private bool startupWelcomePublished;
     private static bool readyScreenShownThisSession;
@@ -153,9 +160,7 @@ public class GameManager : MonoBehaviour
 
     private void OnValidate()
     {
-        missionDurationSeconds = Mathf.Max(30f, missionDurationSeconds);
         permitRiskFailThreshold = Mathf.Clamp(permitRiskFailThreshold, 10f, 100f);
-        consecutiveExpireFailThreshold = Mathf.Max(1, consecutiveExpireFailThreshold);
         moodShiftPermitRiskThreshold = Mathf.Clamp(moodShiftPermitRiskThreshold, 20f, 95f);
         moodShiftPermitRiskRecoveryThreshold = Mathf.Clamp(moodShiftPermitRiskRecoveryThreshold, 10f, 80f);
         if (moodShiftPermitRiskRecoveryThreshold >= moodShiftPermitRiskThreshold)
@@ -168,6 +173,9 @@ public class GameManager : MonoBehaviour
         educationScoreWeight = Mathf.Max(0, educationScoreWeight);
         missedResponsePenaltyWeight = Mathf.Max(0, missedResponsePenaltyWeight);
         permitRiskPenaltyWeight = Mathf.Max(0, permitRiskPenaltyWeight);
+        warheadSeizedBonusWeight = Mathf.Max(0, warheadSeizedBonusWeight);
+        cargoSpillPenaltyWeight = Mathf.Max(0, cargoSpillPenaltyWeight);
+        warheadDeliveredPenaltyWeight = Mathf.Max(0, warheadDeliveredPenaltyWeight);
         fallbackTimeScoreMultiplier = Mathf.Max(0f, fallbackTimeScoreMultiplier);
 
         bronzeScoreThreshold = Mathf.Max(0, bronzeScoreThreshold);
@@ -249,6 +257,7 @@ public class GameManager : MonoBehaviour
         Debug.Log($"GameManager started. Welcome, Commander {commanderName}!");
 
         ResetRuntimeSessionState();
+        Difficulty.LockForMission();
         EnsureMissionConfigIsValid();
 
         // Ensure the research system exists so other systems can call it.
@@ -311,11 +320,6 @@ public class GameManager : MonoBehaviour
 
     private void EnsureMissionConfigIsValid()
     {
-        if (missionDurationSeconds < 30f)
-        {
-            missionDurationSeconds = 20f * 60f;
-        }
-
         permitRiskFailThreshold = Mathf.Clamp(permitRiskFailThreshold, 10f, 100f);
     }
 
@@ -338,6 +342,7 @@ public class GameManager : MonoBehaviour
         missionHudLabel = null;
         readyToPlayPanel = null;
         readySkipToggle = null;
+        readyDifficultyButton = null;
         skipReadyNextTime = false;
     }
 
@@ -393,7 +398,7 @@ public class GameManager : MonoBehaviour
         panelRect.anchorMax = new Vector2(0.5f, 0.5f);
         panelRect.pivot = new Vector2(0.5f, 0.5f);
         panelRect.anchoredPosition = new Vector2(0f, 120f);
-        panelRect.sizeDelta = new Vector2(680f, 400f);
+        panelRect.sizeDelta = new Vector2(680f, 460f);
 
         var messageBox = new GameObject("ReadyMessageBox", typeof(Image));
         messageBox.transform.SetParent(readyToPlayPanel.transform, false);
@@ -422,13 +427,41 @@ public class GameManager : MonoBehaviour
             readyToPlayPanel.transform,
             "ReadySkipNextTimeToggle",
             "Skip next time",
-            new Vector2(0f, -278f),
+            new Vector2(0f, -338f),
             new Vector2(220f, 28f));
         readySkipToggle.SetIsOnWithoutNotify(false);
         readySkipToggle.onValueChanged.AddListener(OnReadySkipNextTimeChanged);
 
-        var okButton = CreatePanelButton(readyToPlayPanel.transform, "ReadyOkButton", "OK", new Vector2(0f, -336f), new Vector2(180f, 48f));
+        readyDifficultyButton = CreatePanelButton(readyToPlayPanel.transform, "ReadyDifficultyButton", BuildDifficultyButtonLabel(), new Vector2(0f, -282f), new Vector2(300f, 44f));
+        readyDifficultyButton.onClick.AddListener(CycleDifficultyOnReadyPanel);
+
+        var okButton = CreatePanelButton(readyToPlayPanel.transform, "ReadyOkButton", "OK", new Vector2(0f, -396f), new Vector2(180f, 48f));
         okButton.onClick.AddListener(ConfirmReadyToPlay);
+    }
+
+    private static string BuildDifficultyButtonLabel()
+    {
+        var preset = Difficulty.ActivePreset;
+        return $"Difficulty: {preset.Label} ({Mathf.RoundToInt(preset.MissionDurationSeconds / 60f)} min)";
+    }
+
+    /// <summary>The mission has not started yet on the Get Ready panel, so the change applies right away.</summary>
+    private void CycleDifficultyOnReadyPanel()
+    {
+        Difficulty.SetSelected(Difficulty.Next(Difficulty.Active));
+        Difficulty.LockForMission();
+        bestScore = PlayerPrefs.GetInt(BestScorePrefKey, 0);
+
+        if (readyDifficultyButton != null)
+        {
+            var label = readyDifficultyButton.GetComponentInChildren<Text>();
+            if (label != null)
+            {
+                label.text = BuildDifficultyButtonLabel();
+            }
+        }
+
+        RefreshMissionHud();
     }
 
     private void OnReadySkipNextTimeChanged(bool isOn)
@@ -640,6 +673,10 @@ public class GameManager : MonoBehaviour
                 state.respondedContactsCount,
                 state.expiredResponsesCount,
                 state.consecutiveExpiredResponsesCount);
+            cachedUfoManager.ApplyMuleCargoState(
+                state.muleCargoSpills,
+                state.warheadsSeized,
+                state.warheadsDelivered);
         }
     }
 
@@ -1039,6 +1076,11 @@ public class GameManager : MonoBehaviour
 
         Debug.Log($"[Mission] Ended: {reason}. elapsed={missionElapsedSeconds:0.00}s duration={missionDurationSeconds:0.00}s permitRisk={(ufo != null ? ufo.PermitRisk : -1f):0.0} threshold={permitRiskFailThreshold:0.0}");
 
+        if (ufo != null)
+        {
+            ufo.CancelPendingResponse();
+        }
+
         if (pauseGameWhenMissionEnds)
         {
             GameMenuController.SetPaused(true);
@@ -1165,12 +1207,13 @@ public class GameManager : MonoBehaviour
         var pausedSuffix = GameMenuController.IsPaused ? "  [PAUSED]" : string.Empty;
         var opsSuffix = freeOpsMode ? "  [FREE OPS]" : string.Empty;
         var archangelSuffix = activeMissionMood == NarrativeMood.Mysterious ? "  [ARCHANGEL PROTOCOL]" : string.Empty;
+        var difficultySuffix = $"  [{Difficulty.ActivePreset.Label.ToUpperInvariant()}]";
         var medalText = MedalTierToLabel(medalTier);
         var progressText = nextMedalTarget > 0
             ? $"Next Medal At: {nextMedalTarget}"
             : "Top Medal Reached";
         missionHudLabel.text =
-            $"MISSION{pausedSuffix}{opsSuffix}{archangelSuffix}\n" +
+            $"MISSION{difficultySuffix}{pausedSuffix}{opsSuffix}{archangelSuffix}\n" +
             $"Time Left: {minutes}:{seconds:00}  Score: {score}\n" +
             $"Best: {bestScore}  Medal: {medalText}\n" +
             $"Priority: {currentPriority}  {progressText}\n" +
@@ -1221,12 +1264,57 @@ public class GameManager : MonoBehaviour
             body: $"Response miss streak is {streak}/{threshold}.\nOne more missed response will fail the mission."));
     }
 
+    /// <summary>Mule score lines for the mission end panel. Empty when no Mule cargo was seized, spilled or delivered.</summary>
+    private string BuildMuleBreakdownLines(UFOManager ufo)
+    {
+        if (ufo == null || (ufo.WarheadsSeized == 0 && ufo.MuleCargoSpills == 0 && ufo.WarheadsDelivered == 0))
+        {
+            return string.Empty;
+        }
+
+        var parts = new System.Collections.Generic.List<string>(3);
+        if (ufo.WarheadsSeized > 0)
+        {
+            parts.Add($"<color=#8CFF8C>+ Warheads seized ({ufo.WarheadsSeized}): {ufo.WarheadsSeized * warheadSeizedBonusWeight}</color>");
+        }
+
+        if (ufo.MuleCargoSpills > 0)
+        {
+            parts.Add($"<color=#FF9B9B>- Cargo spills ({ufo.MuleCargoSpills}): {ufo.MuleCargoSpills * cargoSpillPenaltyWeight}</color>");
+        }
+
+        if (ufo.WarheadsDelivered > 0)
+        {
+            parts.Add($"<color=#FF9B9B>- Warheads delivered ({ufo.WarheadsDelivered}): {ufo.WarheadsDelivered * warheadDeliveredPenaltyWeight}</color>");
+        }
+
+        return "\n" + string.Join("\n", parts);
+    }
+
+    private static int ApplyDifficultyScoreMultiplier(int rawScore)
+    {
+        return Mathf.Max(0, Mathf.RoundToInt(rawScore * Difficulty.ActivePreset.ScoreMultiplier));
+    }
+
+    /// <summary>Score line for the mission end panel showing the difficulty multiplier. Empty on Normal.</summary>
+    private static string BuildDifficultyBreakdownLine()
+    {
+        var preset = Difficulty.ActivePreset;
+        if (Mathf.Approximately(preset.ScoreMultiplier, 1f))
+        {
+            return string.Empty;
+        }
+
+        var color = preset.ScoreMultiplier > 1f ? "#8CFF8C" : "#FF9B9B";
+        return $"\n<color={color}>x Difficulty ({preset.Label}): {preset.ScoreMultiplier:0.0#}</color>";
+    }
+
     private int CalculateMissionScore(UFOManager ufo)
     {
         if (ufo == null)
         {
             var fallbackTime = Mathf.RoundToInt(missionElapsedSeconds * fallbackTimeScoreMultiplier);
-            return Mathf.Max(0, fallbackTime);
+            return ApplyDifficultyScoreMultiplier(Mathf.Max(0, fallbackTime));
         }
 
         var baseScore = ufo.RespondedContactsCount * responseScoreWeight;
@@ -1235,8 +1323,13 @@ public class GameManager : MonoBehaviour
         var missPenalty = ufo.ExpiredResponsesCount * missedResponsePenaltyWeight;
         var riskPenalty = Mathf.RoundToInt(ufo.PermitRisk * permitRiskPenaltyWeight);
         var survivalBonus = Mathf.RoundToInt(Mathf.Min(missionElapsedSeconds, missionDurationSeconds));
+        var warheadBonus = ufo.WarheadsSeized * warheadSeizedBonusWeight;
+        var spillPenalty = ufo.MuleCargoSpills * cargoSpillPenaltyWeight;
+        var deliveredPenalty = ufo.WarheadsDelivered * warheadDeliveredPenaltyWeight;
 
-        return Mathf.Max(0, baseScore + contactCoverage + educationScore + survivalBonus - missPenalty - riskPenalty);
+        var rawScore = Mathf.Max(0, baseScore + contactCoverage + educationScore + survivalBonus + warheadBonus
+                                    - missPenalty - riskPenalty - spillPenalty - deliveredPenalty);
+        return ApplyDifficultyScoreMultiplier(rawScore);
     }
 
     private MedalTier GetMedalTier(int score)
@@ -1377,7 +1470,8 @@ public class GameManager : MonoBehaviour
         var survivalBonus = Mathf.RoundToInt(Mathf.Min(missionElapsedSeconds, missionDurationSeconds));
 
         var bestSuffix = isNewBest ? " (NEW)" : string.Empty;
-        return $"{resultLine}\n\nTime: {elapsedMinutes}:{elapsedSecondsPart:00}\nContacts: {ufo.TotalContactsSpawned}  Responses: {ufo.RespondedContactsCount}  Missed: {ufo.ExpiredResponsesCount}\nEducation: {Mathf.RoundToInt(ufo.Education)}  PermitRisk: {Mathf.RoundToInt(ufo.PermitRisk)}\n\nScore Breakdown:\n<color=#8CFF8C>+ Responses: {responsePoints}</color>  <color=#8CFF8C>+ Coverage: {coveragePoints}</color>\n<color=#8CFF8C>+ Education: {educationPoints}</color>  <color=#8CFF8C>+ Survival: {survivalBonus}</color>\n<color=#FF9B9B>- Missed: {missedPenalty}</color>  <color=#FF9B9B>- Risk: {riskPenalty}</color>\n\nScore: {score}\nMedal: {medalText}\nBest: {bestScore}{bestSuffix}";
+        var muleLines = BuildMuleBreakdownLines(ufo);
+        return $"{resultLine}\n\nDifficulty: {Difficulty.ActivePreset.Label}  Time: {elapsedMinutes}:{elapsedSecondsPart:00}\nContacts: {ufo.TotalContactsSpawned}  Responses: {ufo.RespondedContactsCount}  Missed: {ufo.ExpiredResponsesCount}\nEducation: {Mathf.RoundToInt(ufo.Education)}  PermitRisk: {Mathf.RoundToInt(ufo.PermitRisk)}\n\nScore Breakdown:\n<color=#8CFF8C>+ Responses: {responsePoints}</color>  <color=#8CFF8C>+ Coverage: {coveragePoints}</color>\n<color=#8CFF8C>+ Education: {educationPoints}</color>  <color=#8CFF8C>+ Survival: {survivalBonus}</color>\n<color=#FF9B9B>- Missed: {missedPenalty}</color>  <color=#FF9B9B>- Risk: {riskPenalty}</color>{muleLines}{BuildDifficultyBreakdownLine()}\n\nScore: {score}\nMedal: {medalText}\nBest: {bestScore}{bestSuffix}";
     }
 
     private static Text CreatePanelLabel(Transform parent, string name, string content, int fontSize, Vector2 anchoredPosition)

@@ -2177,9 +2177,9 @@ MonoBehaviour:
   missedResponsePenaltyWeight: 90
   permitRiskPenaltyWeight: 9
   fallbackTimeScoreMultiplier: 0.8
-  bronzeScoreThreshold: 2500
-  silverScoreThreshold: 4200
-  goldScoreThreshold: 6200
+  bronzeScoreThreshold: 1900
+  silverScoreThreshold: 3150
+  goldScoreThreshold: 4650
 --- !u!4 &2044924459
 Transform:
   m_ObjectHideFlags: 0

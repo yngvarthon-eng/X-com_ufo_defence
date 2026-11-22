@@ -191,9 +191,8 @@ public class UFOManager : MonoBehaviour
     [Tooltip("If enabled (and ContactOutcomeWeights is empty), early-game contacts skew toward Human criminal craft, then ramp into alien segments over time.")]
     [SerializeField] private bool enableSoftStart = true;
 
-    [Tooltip("How long (real-time seconds) the soft-start ramp lasts.")]
-    [Min(0f)]
-    [SerializeField] private float softStartDurationSeconds = 480f;
+    // Soft-start ramp length (real-time seconds) comes from the difficulty preset (see Difficulty.cs).
+    private static float softStartDurationSeconds => Difficulty.ActivePreset.SoftStartDurationSeconds;
 
     [Header("Lore")]
     [Tooltip("If enabled, publishes a one-time high-trust warning message on the first UFO contact to seed awareness/education.")]
@@ -243,6 +242,7 @@ public class UFOManager : MonoBehaviour
     private float pendingContactBeganAt;
     private bool hasPendingResponse;
     private int pendingLastCountdownSeconds = -1;
+    private bool pendingResponseShownPaused;
 
     private float nextAutoSpawnAt;
     private int respondedContactsCount;
@@ -679,7 +679,15 @@ public class UFOManager : MonoBehaviour
     {
         if (GameMenuController.IsPaused)
         {
+            HoldPendingResponseWhilePaused();
             return;
+        }
+
+        if (pendingResponseShownPaused)
+        {
+            // Force the countdown text to refresh now that the game is running again.
+            pendingResponseShownPaused = false;
+            pendingLastCountdownSeconds = -1;
         }
 
         TickAutoSpawn();
@@ -789,6 +797,7 @@ public class UFOManager : MonoBehaviour
         }
 
         perSecond *= GetPriorityContactRateMultiplier();
+        perSecond *= Difficulty.ActivePreset.SpawnRateMultiplier;
 
         // Pressure: Probe=0, Commit=1, Overreach=2. Summed across active segments.
         var pressure = 0;
@@ -817,6 +826,12 @@ public class UFOManager : MonoBehaviour
         };
     }
 
+    /// <summary>Difficulty scales permit risk increases only; reductions are left as they are.</summary>
+    private static float ApplyDifficultyToPermitRiskGain(float delta)
+    {
+        return delta > 0f ? delta * Difficulty.ActivePreset.PermitRiskGainMultiplier : delta;
+    }
+
     private float GetEffectiveResponseChoiceTimeoutSeconds()
     {
         if (responseChoiceTimeoutSeconds <= 0f)
@@ -836,7 +851,7 @@ public class UFOManager : MonoBehaviour
             _ => 1.00f,
         };
 
-        return Mathf.Max(1f, responseChoiceTimeoutSeconds * mult);
+        return Mathf.Max(1f, responseChoiceTimeoutSeconds * mult * Difficulty.ActivePreset.ResponseTimeoutMultiplier);
     }
 
     private GameManager.StrategicPriority GetCurrentPriority()
@@ -1013,7 +1028,7 @@ public class UFOManager : MonoBehaviour
             };
         }
 
-        var applied = rawDelta * mult;
+        var applied = ApplyDifficultyToPermitRiskGain(rawDelta * mult);
         permitRisk = Mathf.Clamp(permitRisk + applied, 0f, 100f);
 
         DebugLogPriority($"[UFO][Priority] PermitRisk(response) delta raw={rawDelta:0.###} applied={applied:0.###} mult={mult:0.00} priority={priority} now={permitRisk:0.0}");
@@ -1114,6 +1129,7 @@ public class UFOManager : MonoBehaviour
         hasPendingResponse = true;
 
         pendingLastCountdownSeconds = -1;
+        pendingResponseShownPaused = false;
 
         var effectiveTimeout = GetEffectiveResponseChoiceTimeoutSeconds();
         var initialSeconds = effectiveTimeout > 0f
@@ -1148,6 +1164,7 @@ public class UFOManager : MonoBehaviour
 
         hasPendingResponse = false;
         pendingLastCountdownSeconds = -1;
+        pendingResponseShownPaused = false;
         consecutiveExpiredResponsesCount = 0;
         cuePlayer?.PlayResponseAccepted();
 
@@ -1182,7 +1199,40 @@ public class UFOManager : MonoBehaviour
 
     private static string GetResponseChoiceTriggerKey(int contactId) => $"ufo/response_choice/{contactId}";
 
-    private static string BuildResponseChoiceBody(int contactId, int? remainingSeconds)
+    /// <summary>
+    /// While paused, push the response timer start forward so paused time does not count,
+    /// and mark the prompt as paused so the frozen countdown is not mistaken for a hang.
+    /// </summary>
+    private void HoldPendingResponseWhilePaused()
+    {
+        if (!enableResponseChoices || !hasPendingResponse)
+        {
+            return;
+        }
+
+        pendingContactBeganAt += Time.unscaledDeltaTime;
+
+        if (pendingResponseShownPaused)
+        {
+            return;
+        }
+
+        pendingResponseShownPaused = true;
+
+        var queue = BoxMessageQueue.Instance != null ? BoxMessageQueue.Instance : UnityEngine.Object.FindAnyObjectByType<BoxMessageQueue>();
+        if (queue == null)
+        {
+            return;
+        }
+
+        var effectiveTimeout = GetEffectiveResponseChoiceTimeoutSeconds();
+        int? remaining = effectiveTimeout > 0f
+            ? Mathf.Max(0, Mathf.CeilToInt(effectiveTimeout - (Time.realtimeSinceStartup - pendingContactBeganAt)))
+            : (int?)null;
+        queue.UpdateBody(GetResponseChoiceTriggerKey(pendingContactId), BuildResponseChoiceBody(pendingContactId, remaining, paused: true));
+    }
+
+    private static string BuildResponseChoiceBody(int contactId, int? remainingSeconds, bool paused = false)
     {
         var timeoutText = string.Empty;
         if (remainingSeconds.HasValue)
@@ -1190,7 +1240,13 @@ public class UFOManager : MonoBehaviour
             var total = Mathf.Max(0, remainingSeconds.Value);
             var minutes = total / 60;
             var seconds = total % 60;
-            timeoutText = $"\n(Expires in {minutes}:{seconds:00})";
+            timeoutText = paused
+                ? $"\n(PAUSED at {minutes}:{seconds:00}, resume to continue)"
+                : $"\n(Expires in {minutes}:{seconds:00})";
+        }
+        else if (paused)
+        {
+            timeoutText = "\n(PAUSED, resume to continue)";
         }
 
         return $"1 Ignore   2 Track   3 Intercept   4 Dispatch\nContact #{contactId}{timeoutText}";
@@ -1244,6 +1300,25 @@ public class UFOManager : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// Drop the open Response Choice without counting it as a miss. Used when the mission ends,
+    /// so a frozen prompt is not left on screen behind the mission end panel.
+    /// </summary>
+    public void CancelPendingResponse()
+    {
+        if (!hasPendingResponse)
+        {
+            return;
+        }
+
+        hasPendingResponse = false;
+        pendingLastCountdownSeconds = -1;
+        pendingResponseShownPaused = false;
+
+        var queue = BoxMessageQueue.Instance != null ? BoxMessageQueue.Instance : UnityEngine.Object.FindAnyObjectByType<BoxMessageQueue>();
+        ClearResponseChoicePrompt(queue, pendingContactId);
+    }
+
     private static void ClearResponseChoicePrompt(BoxMessageQueue queue, int contactId)
     {
         if (queue == null)
@@ -1265,6 +1340,7 @@ public class UFOManager : MonoBehaviour
 
         hasPendingResponse = false;
         pendingLastCountdownSeconds = -1;
+        pendingResponseShownPaused = false;
         expiredResponsesCount++;
         consecutiveExpiredResponsesCount++;
         cuePlayer?.PlayResponseExpired();
@@ -2059,6 +2135,7 @@ public class UFOManager : MonoBehaviour
 
         var rawPermitDelta = permitDelta;
         permitDelta *= GetPriorityPermitRiskFromOutcomeMultiplier();
+        permitDelta = ApplyDifficultyToPermitRiskGain(permitDelta);
         permitRisk = Mathf.Clamp(permitRisk + permitDelta, 0f, 100f);
 
         DebugLogPriority($"[UFO][Priority] PermitRisk(outcome) raw={rawPermitDelta:0.###} applied={permitDelta:0.###} mult={GetPriorityPermitRiskFromOutcomeMultiplier():0.00} priority={GetCurrentPriority()} now={permitRisk:0.0} outcome={outcome.Segment}/{outcome.Intent}");
@@ -2357,6 +2434,14 @@ public class UFOManager : MonoBehaviour
     public int MuleCargoSpills { get; private set; }
     public int WarheadsSeized { get; private set; }
     public int WarheadsDelivered { get; private set; }
+
+    /// <summary>Restore Mule totals from a save. Called after <see cref="ApplyPersistentState"/>.</summary>
+    public void ApplyMuleCargoState(int loadedSpills, int loadedWarheadsSeized, int loadedWarheadsDelivered)
+    {
+        MuleCargoSpills = Mathf.Max(0, loadedSpills);
+        WarheadsSeized = Mathf.Max(0, loadedWarheadsSeized);
+        WarheadsDelivered = Mathf.Max(0, loadedWarheadsDelivered);
+    }
 
     private void StoreMuleCargo(int contactId, MuleCargo cargo)
     {

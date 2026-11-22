@@ -26,6 +26,10 @@ public class GameMenuController : MonoBehaviour
         public int respondedContactsCount;
         public int expiredResponsesCount;
         public int consecutiveExpiredResponsesCount;
+        public int muleCargoSpills;
+        public int warheadsSeized;
+        public int warheadsDelivered;
+        public string difficulty; // Enum name; missing in older saves, which keeps the current choice.
         public string commanderName;
         public string savedAtUtc;
     }
@@ -46,6 +50,7 @@ public class GameMenuController : MonoBehaviour
     private Slider ufoSpawnRateSlider;
     private Text ufoSpawnRateValueLabel;
     private Button mapStyleButton;
+    private Button difficultyButton;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     private static void ResetPauseStateOnSubsystemRegistration()
@@ -111,7 +116,7 @@ public class GameMenuController : MonoBehaviour
         menuPanelRect.anchorMax = new Vector2(1f, 1f);
         menuPanelRect.pivot = new Vector2(1f, 1f);
         menuPanelRect.anchoredPosition = new Vector2(-20f, -70f);
-        menuPanelRect.sizeDelta = new Vector2(320f, 510f);
+        menuPanelRect.sizeDelta = new Vector2(320f, 550f);
 
         CreateTextLabel(menuPanel.transform, "CommanderLabel", "Commander Name", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -22f), new Vector2(260f, 24f), 16);
 
@@ -146,16 +151,20 @@ public class GameMenuController : MonoBehaviour
         mapStyleButton.onClick.AddListener(OnMapStyleButtonClicked);
         SyncMapStyleControlFromState();
 
-        var newGameButton = CreateButton(menuPanel.transform, "NewGameButton", "New Game", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -306f), new Vector2(260f, 40f));
+        difficultyButton = CreateButton(menuPanel.transform, "DifficultyMenuButton", "Difficulty: Normal", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -306f), new Vector2(260f, 36f));
+        difficultyButton.onClick.AddListener(OnDifficultyButtonClicked);
+        UpdateDifficultyButtonLabel();
+
+        var newGameButton = CreateButton(menuPanel.transform, "NewGameButton", "New Game", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -346f), new Vector2(260f, 40f));
         newGameButton.onClick.AddListener(NewGame);
 
-        var loadButton = CreateButton(menuPanel.transform, "LoadButton", "Load", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -352f), new Vector2(260f, 40f));
+        var loadButton = CreateButton(menuPanel.transform, "LoadButton", "Load", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -392f), new Vector2(260f, 40f));
         loadButton.onClick.AddListener(LoadGame);
 
-        var saveButton = CreateButton(menuPanel.transform, "SaveButton", "Save", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -398f), new Vector2(260f, 40f));
+        var saveButton = CreateButton(menuPanel.transform, "SaveButton", "Save", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -438f), new Vector2(260f, 40f));
         saveButton.onClick.AddListener(SaveGame);
 
-        var quitButton = CreateButton(menuPanel.transform, "QuitButton", "Quit", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -444f), new Vector2(260f, 40f));
+        var quitButton = CreateButton(menuPanel.transform, "QuitButton", "Quit", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -484f), new Vector2(260f, 40f));
         quitButton.onClick.AddListener(QuitGame);
 
         menuPanel.SetActive(false);
@@ -370,6 +379,10 @@ public class GameMenuController : MonoBehaviour
             respondedContactsCount = ufo != null ? ufo.RespondedContactsCount : 0,
             expiredResponsesCount = ufo != null ? ufo.ExpiredResponsesCount : 0,
             consecutiveExpiredResponsesCount = ufo != null ? ufo.ConsecutiveExpiredResponsesCount : 0,
+            muleCargoSpills = ufo != null ? ufo.MuleCargoSpills : 0,
+            warheadsSeized = ufo != null ? ufo.WarheadsSeized : 0,
+            warheadsDelivered = ufo != null ? ufo.WarheadsDelivered : 0,
+            difficulty = Difficulty.Active.ToString(),
             commanderName = manager != null ? manager.CommanderName : string.Empty,
             savedAtUtc = DateTime.UtcNow.ToString("O")
         };
@@ -400,6 +413,12 @@ public class GameMenuController : MonoBehaviour
         }
 
         var data = JsonUtility.FromJson<SaveData>(json);
+        if (Difficulty.TryParse(data.difficulty, out var savedDifficulty))
+        {
+            // Applied when the reloaded scene starts the mission.
+            Difficulty.SetSelected(savedDifficulty);
+        }
+
         PlayerPrefs.SetInt(AutoLoadPriorityPrefKey, data.priority);
         PlayerPrefs.SetInt(MapStylePrefKey, data.mapStyleIndex);
 
@@ -414,6 +433,9 @@ public class GameMenuController : MonoBehaviour
             respondedContactsCount = data.respondedContactsCount,
             expiredResponsesCount = data.expiredResponsesCount,
             consecutiveExpiredResponsesCount = data.consecutiveExpiredResponsesCount,
+            muleCargoSpills = data.muleCargoSpills,
+            warheadsSeized = data.warheadsSeized,
+            warheadsDelivered = data.warheadsDelivered,
             commanderName = data.commanderName,
         };
 
@@ -466,6 +488,7 @@ public class GameMenuController : MonoBehaviour
         {
             SyncCommanderInputFromState();
             SyncAudioControlsFromState();
+            UpdateDifficultyButtonLabel();
             menuForcedPause = !IsPaused;
             if (menuForcedPause)
             {
@@ -754,6 +777,37 @@ public class GameMenuController : MonoBehaviour
         }
 
         ufoSpawnRateValueLabel.text = $"{Mathf.Clamp(value, UfoSpawnRateMin, UfoSpawnRateMax):0.00}/m";
+    }
+
+    private void OnDifficultyButtonClicked()
+    {
+        Difficulty.SetSelected(Difficulty.Next(Difficulty.Selected));
+        UpdateDifficultyButtonLabel();
+
+        if (Difficulty.Selected != Difficulty.Active)
+        {
+            ShowStatusToast($"{Difficulty.For(Difficulty.Selected).Label} applies from New Game");
+        }
+    }
+
+    private void UpdateDifficultyButtonLabel()
+    {
+        if (difficultyButton == null)
+        {
+            return;
+        }
+
+        var text = difficultyButton.GetComponentInChildren<Text>();
+        if (text == null)
+        {
+            return;
+        }
+
+        var selected = Difficulty.Selected;
+        var label = Difficulty.For(selected).Label;
+        text.text = selected == Difficulty.Active
+            ? $"Difficulty: {label}"
+            : $"Difficulty: {label} (next)";
     }
 
     private void SyncMapStyleControlFromState()

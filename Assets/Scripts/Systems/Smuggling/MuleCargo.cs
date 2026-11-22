@@ -11,6 +11,16 @@ namespace XCon.Smuggling
         NuclearWarhead = 3,  // Rare. Radioactive if breached. Major story event.
     }
 
+    /// <summary>How a Mule contact ended, as seen by the smuggling network.</summary>
+    public enum MuleOutcome
+    {
+        Scanned = 0,      // Track
+        Recovered = 1,    // Dispatch
+        DownedIntact = 2, // Intercept, hold held together
+        Spilled = 3,      // Intercept, hold broke open
+        Delivered = 4,    // Ignore or expired
+    }
+
     public enum CargoHazard
     {
         None = 0,

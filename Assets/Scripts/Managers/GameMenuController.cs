@@ -31,6 +31,7 @@ public class GameMenuController : MonoBehaviour
         public int warheadsDelivered;
         public int hazardSitesContained;
         public int regionsContaminated;
+        public string networkStateJson;
         public string difficulty; // Enum name; missing in older saves, which keeps the current choice.
         public string commanderName;
         public string savedAtUtc;
@@ -386,6 +387,7 @@ public class GameMenuController : MonoBehaviour
             warheadsDelivered = ufo != null ? ufo.WarheadsDelivered : 0,
             hazardSitesContained = XCon.Smuggling.HazardSiteManager.Instance != null ? XCon.Smuggling.HazardSiteManager.Instance.SitesContained : 0,
             regionsContaminated = XCon.Smuggling.HazardSiteManager.Instance != null ? XCon.Smuggling.HazardSiteManager.Instance.RegionsContaminated : 0,
+            networkStateJson = XCon.Smuggling.SmugglingNetwork.Instance != null ? XCon.Smuggling.SmugglingNetwork.Instance.ExportStateJson() : string.Empty,
             difficulty = Difficulty.Active.ToString(),
             commanderName = manager != null ? manager.CommanderName : string.Empty,
             savedAtUtc = DateTime.UtcNow.ToString("O")
@@ -442,6 +444,7 @@ public class GameMenuController : MonoBehaviour
             warheadsDelivered = data.warheadsDelivered,
             hazardSitesContained = data.hazardSitesContained,
             regionsContaminated = data.regionsContaminated,
+            networkStateJson = data.networkStateJson,
             commanderName = data.commanderName,
         };
 

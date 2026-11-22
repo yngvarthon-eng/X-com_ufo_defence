@@ -1947,14 +1947,14 @@ public class UFOManager : MonoBehaviour
                                 muleWeightContraband,
                                 muleWeightHeavyMetals,
                                 muleWeightDrugPrecursors,
-                                muleWeightNuclearWarhead);
+                                muleWeightNuclearWarhead * GetNetworkWarheadWeightMultiplier());
                             debugForcedMuleCargo = null;
                             muleCargo = new MuleCargo { Type = cargoType, Revealed = false };
 
                             severity = BoxSeverity.Warn;
                             title = "Mule Cargo Craft";
                             body = "Low-tech cargo craft suspected. No crew, no life support: goods only.\n" +
-                                   "Cargo: UNKNOWN. Could be harmless, toxic, or worse.\n\n" +
+                                   BuildMuleCargoIntelLine(muleCargo.Value) + "\n\n" +
                                    "Track = scan the hold.  Dispatch = recover it intact.\n" +
                                    "Intercept = shoot it down (risk of spill).  Ignore = it gets delivered.";
                             publishEducationBulletin = true;
@@ -2472,10 +2472,12 @@ public class UFOManager : MonoBehaviour
         var severity = BoxSeverity.Info;
         string title;
         string body;
+        MuleOutcome outcome;
 
         switch (choice)
         {
             case UFOResponseChoice.Track:
+                outcome = MuleOutcome.Scanned;
                 cargo.Revealed = true;
                 ApplyEducationDelta(+0.5f);
                 severity = cargo.Hazard == CargoHazard.None ? BoxSeverity.Info : BoxSeverity.Warn;
@@ -2486,6 +2488,7 @@ public class UFOManager : MonoBehaviour
                 break;
 
             case UFOResponseChoice.Dispatch:
+                outcome = MuleOutcome.Recovered;
                 cargo.Revealed = true;
                 ApplyEducationDelta(+0.5f);
                 if (isWarhead)
@@ -2509,6 +2512,7 @@ public class UFOManager : MonoBehaviour
             {
                 cargo.Revealed = true;
                 var spilled = UnityEngine.Random.value < MuleCargoRules.SpillChanceOnIntercept(cargo.Type);
+                outcome = spilled ? MuleOutcome.Spilled : MuleOutcome.DownedIntact;
                 if (spilled)
                 {
                     MuleCargoSpills++;
@@ -2539,6 +2543,7 @@ public class UFOManager : MonoBehaviour
             }
 
             default: // Ignore, or the response timer ran out.
+                outcome = MuleOutcome.Delivered;
                 if (isWarhead)
                 {
                     WarheadsDelivered++;
@@ -2562,18 +2567,52 @@ public class UFOManager : MonoBehaviour
         contactRecordsById[contactId] = record;
 
         var queue = BoxMessageQueue.Instance != null ? BoxMessageQueue.Instance : UnityEngine.Object.FindAnyObjectByType<BoxMessageQueue>();
-        if (queue == null)
+        if (queue != null)
         {
-            return;
+            queue.Publish(new BoxMessage(
+                triggerKey: $"ufo/cargo/{contactId}",
+                channel: BoxChannel.Info,
+                severity: severity,
+                sourceTag: "Smuggling",
+                title: title,
+                body: $"Contact #{contactId}\n\n{body}\n\nTotals: Spills {MuleCargoSpills}  |  Warheads seized {WarheadsSeized}  |  Warheads delivered {WarheadsDelivered}"));
         }
 
-        queue.Publish(new BoxMessage(
-            triggerKey: $"ufo/cargo/{contactId}",
-            channel: BoxChannel.Info,
-            severity: severity,
-            sourceTag: "Smuggling",
-            title: title,
-            body: $"Contact #{contactId}\n\n{body}\n\nTotals: Spills {MuleCargoSpills}  |  Warheads seized {WarheadsSeized}  |  Warheads delivered {WarheadsDelivered}"));
+        // After the cargo message, so the lead and any warhead event follow it.
+        var network = SmugglingNetwork.Instance != null ? SmugglingNetwork.Instance : GetComponent<SmugglingNetwork>();
+        if (network != null)
+        {
+            network.OnMuleOutcome(contactId, cargo, outcome);
+        }
+    }
+
+    private float GetNetworkWarheadWeightMultiplier()
+    {
+        var network = SmugglingNetwork.Instance != null ? SmugglingNetwork.Instance : GetComponent<SmugglingNetwork>();
+        return network != null ? network.WarheadWeightMultiplier : 1f;
+    }
+
+    /// <summary>What the Mule alert says about the cargo, depending on NIA's network intel.</summary>
+    private string BuildMuleCargoIntelLine(MuleCargo cargo)
+    {
+        var network = SmugglingNetwork.Instance != null ? SmugglingNetwork.Instance : GetComponent<SmugglingNetwork>();
+        if (network != null && network.InformantActive)
+        {
+            return $"Cargo (informant): {MuleCargoRules.DisplayName(cargo.Type)}. Hazard: {MuleCargoRules.HazardLabel(cargo.Hazard)}.";
+        }
+
+        if (network != null && network.CourierRouteKnown)
+        {
+            return $"Cargo: UNKNOWN. Hazard class (courier route intel): {MuleCargoRules.HazardLabel(cargo.Hazard)}.";
+        }
+
+        return "Cargo: UNKNOWN. Could be harmless, toxic, or worse.";
+    }
+
+    /// <summary>Raise or lower the human smuggler escalation stage (used by network story events).</summary>
+    public void AdjustHumanEscalation(int delta)
+    {
+        AdjustEscalationStage(UFOSpeciesSegment.Human, delta);
     }
 
     private void OpenHazardSite(int contactId, CargoHazard hazard)

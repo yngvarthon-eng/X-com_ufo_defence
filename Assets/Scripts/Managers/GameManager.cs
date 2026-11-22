@@ -67,6 +67,7 @@ public class GameManager : MonoBehaviour
         public int warheadsDelivered;
         public int hazardSitesContained;
         public int regionsContaminated;
+        public string networkStateJson;
         public string commanderName;
     }
 
@@ -284,6 +285,11 @@ public class GameManager : MonoBehaviour
         if (GetComponent<HazardSiteManager>() == null)
         {
             gameObject.AddComponent<HazardSiteManager>();
+        }
+
+        if (GetComponent<SmugglingNetwork>() == null)
+        {
+            gameObject.AddComponent<SmugglingNetwork>();
         }
 
         // Ensure response-related managers exist.
@@ -695,6 +701,12 @@ public class GameManager : MonoBehaviour
         if (hazardSites != null)
         {
             hazardSites.ApplyPersistentState(state.hazardSitesContained, state.regionsContaminated);
+        }
+
+        var network = GetSmugglingNetwork();
+        if (network != null)
+        {
+            network.ImportStateJson(state.networkStateJson);
         }
     }
 
@@ -1245,7 +1257,31 @@ public class GameManager : MonoBehaviour
     {
         var sites = GetHazardSites();
         var line = sites != null ? sites.BuildHudLine() : string.Empty;
-        return string.IsNullOrEmpty(line) ? string.Empty : "\n" + line;
+        var network = GetSmugglingNetwork();
+        var networkLine = network != null ? network.BuildHudLine() : string.Empty;
+
+        var text = string.IsNullOrEmpty(line) ? string.Empty : "\n" + line;
+        return string.IsNullOrEmpty(networkLine) ? text : text + "\n" + networkLine;
+    }
+
+    private SmugglingNetwork GetSmugglingNetwork()
+    {
+        return SmugglingNetwork.Instance != null ? SmugglingNetwork.Instance : GetComponent<SmugglingNetwork>();
+    }
+
+    private readonly System.Collections.Generic.List<System.Collections.Generic.KeyValuePair<string, int>> networkScoreLines = new();
+
+    /// <summary>Network and warhead story score lines (label, points), refreshed on each call.</summary>
+    private System.Collections.Generic.List<System.Collections.Generic.KeyValuePair<string, int>> GetNetworkScoreLines()
+    {
+        networkScoreLines.Clear();
+        var network = GetSmugglingNetwork();
+        if (network != null)
+        {
+            network.AppendScoreLines(networkScoreLines);
+        }
+
+        return networkScoreLines;
     }
 
     private HazardSiteManager GetHazardSites()
@@ -1302,12 +1338,21 @@ public class GameManager : MonoBehaviour
         var contained = hazardSites != null ? hazardSites.SitesContained : 0;
         var contaminated = hazardSites != null ? hazardSites.RegionsContaminated : 0;
 
-        if (ufo == null || (ufo.WarheadsSeized == 0 && ufo.MuleCargoSpills == 0 && ufo.WarheadsDelivered == 0 && contained == 0 && contaminated == 0))
+        var networkLines = GetNetworkScoreLines();
+
+        if (ufo == null || (ufo.WarheadsSeized == 0 && ufo.MuleCargoSpills == 0 && ufo.WarheadsDelivered == 0 && contained == 0 && contaminated == 0 && networkLines.Count == 0))
         {
             return string.Empty;
         }
 
-        var parts = new System.Collections.Generic.List<string>(5);
+        var parts = new System.Collections.Generic.List<string>(5 + networkLines.Count);
+        foreach (var line in networkLines)
+        {
+            parts.Add(line.Value >= 0
+                ? $"<color=#8CFF8C>+ {line.Key}: {line.Value}</color>"
+                : $"<color=#FF9B9B>- {line.Key}: {-line.Value}</color>");
+        }
+
         if (contained > 0)
         {
             parts.Add($"<color=#8CFF8C>+ Sites contained ({contained}): {contained * hazardSiteContainedBonusWeight}</color>");
@@ -1375,7 +1420,13 @@ public class GameManager : MonoBehaviour
         var containedBonus = hazardSites != null ? hazardSites.SitesContained * hazardSiteContainedBonusWeight : 0;
         var contaminationPenalty = hazardSites != null ? hazardSites.RegionsContaminated * regionContaminatedPenaltyWeight : 0;
 
-        var rawScore = Mathf.Max(0, baseScore + contactCoverage + educationScore + survivalBonus + warheadBonus + containedBonus
+        var networkPoints = 0;
+        foreach (var line in GetNetworkScoreLines())
+        {
+            networkPoints += line.Value;
+        }
+
+        var rawScore = Mathf.Max(0, baseScore + contactCoverage + educationScore + survivalBonus + warheadBonus + containedBonus + networkPoints
                                     - missPenalty - riskPenalty - spillPenalty - deliveredPenalty - contaminationPenalty);
         return ApplyDifficultyScoreMultiplier(rawScore);
     }

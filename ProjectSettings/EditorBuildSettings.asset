@@ -4,7 +4,10 @@
 EditorBuildSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 2
-  m_Scenes: []
+  m_Scenes:
+  - enabled: 1
+    path: Assets/x-con_ufo_defence.unity
+    guid: 21458fbb75fc9d6ed89eb971b660628a
   m_configObjects:
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 6f7a01fcca78c025785d9ab260a888d0, type: 3}
   m_UseUCBPForAssetBundles: 0

@@ -32,6 +32,9 @@ public class GameMenuController : MonoBehaviour
         public int hazardSitesContained;
         public int regionsContaminated;
         public string networkStateJson;
+        public string hazardSitesJson; // Open sites and the hazmat team; missing in older saves.
+        public string squadLoadout;
+        public int squadExposures;
         public string difficulty; // Enum name; missing in older saves, which keeps the current choice.
         public string commanderName;
         public string savedAtUtc;
@@ -388,6 +391,9 @@ public class GameMenuController : MonoBehaviour
             hazardSitesContained = XCon.Smuggling.HazardSiteManager.Instance != null ? XCon.Smuggling.HazardSiteManager.Instance.SitesContained : 0,
             regionsContaminated = XCon.Smuggling.HazardSiteManager.Instance != null ? XCon.Smuggling.HazardSiteManager.Instance.RegionsContaminated : 0,
             networkStateJson = XCon.Smuggling.SmugglingNetwork.Instance != null ? XCon.Smuggling.SmugglingNetwork.Instance.ExportStateJson() : string.Empty,
+            hazardSitesJson = XCon.Smuggling.HazardSiteManager.Instance != null ? XCon.Smuggling.HazardSiteManager.Instance.ExportOpenSitesJson() : string.Empty,
+            squadLoadout = SquadManager.Instance != null ? SquadManager.Instance.Loadout.ToString() : string.Empty,
+            squadExposures = SquadManager.Instance != null ? SquadManager.Instance.Exposures : 0,
             difficulty = Difficulty.Active.ToString(),
             commanderName = manager != null ? manager.CommanderName : string.Empty,
             savedAtUtc = DateTime.UtcNow.ToString("O")
@@ -445,6 +451,9 @@ public class GameMenuController : MonoBehaviour
             hazardSitesContained = data.hazardSitesContained,
             regionsContaminated = data.regionsContaminated,
             networkStateJson = data.networkStateJson,
+            hazardSitesJson = data.hazardSitesJson,
+            squadLoadout = data.squadLoadout,
+            squadExposures = data.squadExposures,
             commanderName = data.commanderName,
         };
 

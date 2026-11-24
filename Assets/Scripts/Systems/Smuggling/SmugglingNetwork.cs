@@ -64,6 +64,14 @@ namespace XCon.Smuggling
         public int warheadsBaited;
         public int warheadsRecovered;
         public int blackmailEvents;
+
+        // Open story beats, so a save made mid-event resumes it.
+        public bool custodyPending;
+        public bool crisisActive;
+        public float crisisRemainingSeconds;
+        public int crisisLeadsGathered;
+        public int crisisLeadsNeeded;
+        public int crisisWarheads;
     }
 
     /// <summary>
@@ -105,9 +113,19 @@ namespace XCon.Smuggling
             }
         }
 
-        public string ExportStateJson() => JsonUtility.ToJson(state);
+        private bool resumeOpenEventsPending;
 
-        /// <summary>Restore from a save. The crisis timer is not saved, like open contacts.</summary>
+        public string ExportStateJson()
+        {
+            state.crisisActive = crisisActive;
+            state.crisisRemainingSeconds = crisisRemainingSeconds;
+            state.crisisLeadsGathered = crisisLeadsGathered;
+            state.crisisLeadsNeeded = crisisLeadsNeeded;
+            state.crisisWarheads = crisisWarheads;
+            return JsonUtility.ToJson(state);
+        }
+
+        /// <summary>Restore from a save, including a running warhead crisis and unanswered decisions.</summary>
         public void ImportStateJson(string json)
         {
             if (string.IsNullOrWhiteSpace(json))
@@ -120,6 +138,14 @@ namespace XCon.Smuggling
             {
                 state = loaded;
                 state.stage = Mathf.Clamp(state.stage, 0, NetworkRules.StageThresholds.Length);
+                crisisActive = state.crisisActive && state.crisisWarheads > 0;
+                crisisRemainingSeconds = Mathf.Max(1f, state.crisisRemainingSeconds);
+                crisisLeadsGathered = Mathf.Max(0, state.crisisLeadsGathered);
+                crisisLeadsNeeded = Mathf.Max(1, state.crisisLeadsNeeded);
+                crisisWarheads = crisisActive ? state.crisisWarheads : 0;
+
+                // Decisions and the crisis notice are raised on the next frame, once the scene is up.
+                resumeOpenEventsPending = true;
             }
         }
 
@@ -154,6 +180,12 @@ namespace XCon.Smuggling
             {
                 OnWarheadDelivered();
             }
+        }
+
+        /// <summary>Leads from other sources (e.g. a recon squad). Doubled by the informant like Mule leads.</summary>
+        public void AddBonusLeads(int amount, string reason)
+        {
+            AddLeads(state.informant ? amount * 2 : amount, reason);
         }
 
         private static string DescribeOutcome(MuleOutcome outcome) => outcome switch
@@ -278,6 +310,7 @@ namespace XCon.Smuggling
                 return;
             }
 
+            state.custodyPending = true;
             StoryDecisionPanel.Show(
                 "Command",
                 "Warhead Custody",
@@ -290,6 +323,7 @@ namespace XCon.Smuggling
                     () =>
                     {
                         state.custodyDecided = true;
+                        state.custodyPending = false;
                         state.warheadsHandedOver++;
                         ApplyHandOverEffects();
                         Publish("network/warhead/handover", BoxSeverity.Info, "Warhead Handed Over",
@@ -301,6 +335,7 @@ namespace XCon.Smuggling
                     () =>
                     {
                         state.custodyDecided = true;
+                        state.custodyPending = false;
                         state.warheadsStudied++;
                         if (ufo != null)
                         {
@@ -316,6 +351,7 @@ namespace XCon.Smuggling
                     () =>
                     {
                         state.custodyDecided = true;
+                        state.custodyPending = false;
                         state.warheadsBaited++;
                         AddLeads(NetworkRules.BaitLeads, "NIA bait operation: buyers tracked to the warhead");
                     }));
@@ -358,8 +394,39 @@ namespace XCon.Smuggling
                 "Track, recover or down Mules intact to gather leads. If time runs out, expect nuclear blackmail.");
         }
 
+        private void ResumeOpenEvents()
+        {
+            resumeOpenEventsPending = false;
+
+            if (state.stage >= 2 && !state.raided && !state.informant)
+            {
+                ShowReceiverDecision();
+            }
+
+            if (state.custodyPending && !state.custodyDecided)
+            {
+                state.custodyPending = false;
+                OnWarheadSeized();
+            }
+
+            if (crisisActive)
+            {
+                Publish(
+                    "network/crisis/resume",
+                    BoxSeverity.Critical,
+                    "Loose Warhead",
+                    "The warhead hunt continues from the saved mission.\n" +
+                    $"Trace {Mathf.Min(crisisLeadsGathered, crisisLeadsNeeded)}/{crisisLeadsNeeded} leads, {FormatSeconds(crisisRemainingSeconds)} left.");
+            }
+        }
+
         private void Update()
         {
+            if (resumeOpenEventsPending)
+            {
+                ResumeOpenEvents();
+            }
+
             if (!crisisActive || GameMenuController.IsPaused)
             {
                 return;

@@ -1183,7 +1183,9 @@ public class UFOManager : MonoBehaviour
 
         ClearResponseChoicePrompt(queue, pendingContactId);
 
-        var choiceText = choice.ToString();
+        var choiceText = choice == UFOResponseChoice.Dispatch
+            ? $"Dispatch ({SquadLoadoutRules.Label(GetSquadLoadout())} kit)"
+            : choice.ToString();
         var escalationText = TryGetEscalationSummaryForContact(pendingContactId, out var summary)
             ? $"\nEscalation: {summary}"
             : string.Empty;
@@ -1567,6 +1569,8 @@ public class UFOManager : MonoBehaviour
 
         var segment = record.Segment;
         var effectiveEducation = education + GetPriorityEducationThresholdBonus();
+        var kit = GetSquadLoadout();
+        var hostileKitOffset = SquadLoadoutRules.HostileEducationOffset(kit);
 
         DebugLogPriority($"[UFO][Priority] ApplyResponseEffects contact={contactId} choice={choice} segment={segment} priority={GetCurrentPriority()} education={education:0.0} effectiveEducation={effectiveEducation:0.0} permitRisk={permitRisk:0.0}");
 
@@ -1620,6 +1624,10 @@ public class UFOManager : MonoBehaviour
                 {
                     AdjustEscalationStageForChoice(segment, -1, choice);
                     ApplyPermitRiskDeltaFromResponse(-0.5f);
+                    if (kit == SquadLoadout.Recon)
+                    {
+                        ApplyEducationDelta(+SquadLoadoutRules.ReconEducationGain);
+                    }
                 }
                 else if (choice == UFOResponseChoice.Intercept)
                 {
@@ -1646,7 +1654,7 @@ public class UFOManager : MonoBehaviour
                 }
                 else if (choice == UFOResponseChoice.Dispatch)
                 {
-                    if (effectiveEducation >= 35f)
+                    if (effectiveEducation >= 35f + hostileKitOffset)
                     {
                         AdjustEscalationStageForChoice(segment, -1, choice);
                     }
@@ -1668,8 +1676,20 @@ public class UFOManager : MonoBehaviour
                 }
                 else if (choice == UFOResponseChoice.Dispatch)
                 {
-                    AdjustEscalationStageForChoice(segment, -1, choice);
-                    ApplyPermitRiskDeltaFromResponse(-2.5f);
+                    if (kit == SquadLoadout.Heavy)
+                    {
+                        // Soldiers with heavy weapons spook a peaceful contact.
+                        ApplyPermitRiskDeltaFromResponse(+1f);
+                    }
+                    else
+                    {
+                        AdjustEscalationStageForChoice(segment, -1, choice);
+                        ApplyPermitRiskDeltaFromResponse(-2.5f);
+                        if (kit == SquadLoadout.Recon)
+                        {
+                            ApplyEducationDelta(+SquadLoadoutRules.ReconEducationGain);
+                        }
+                    }
                 }
                 else if (choice == UFOResponseChoice.Intercept)
                 {
@@ -1689,9 +1709,14 @@ public class UFOManager : MonoBehaviour
             case UFOSpeciesSegment.Dark:
                 if (choice == UFOResponseChoice.Dispatch)
                 {
-                    if (effectiveEducation >= 25f)
+                    if (effectiveEducation >= 25f + hostileKitOffset)
                     {
                         AdjustEscalationStageForChoice(segment, -1, choice);
+                    }
+                    else if (SquadLoadoutRules.IsWeakAgainstHostiles(kit))
+                    {
+                        // A lightly equipped squad that cannot hold its ground emboldens a Dark contact.
+                        AdjustEscalationStageForChoice(segment, +1, choice);
                     }
                 }
                 else if (choice == UFOResponseChoice.Track)
@@ -2488,9 +2513,49 @@ public class UFOManager : MonoBehaviour
                 break;
 
             case UFOResponseChoice.Dispatch:
-                outcome = MuleOutcome.Recovered;
+            {
                 cargo.Revealed = true;
+                var kit = GetSquadLoadout();
+
+                // Heavy weapons can rupture a hazardous hold during the assault.
+                if (kit == SquadLoadout.Heavy
+                    && cargo.Hazard != CargoHazard.None
+                    && UnityEngine.Random.value < MuleCargoRules.SpillChanceOnIntercept(cargo.Type) * SquadLoadoutRules.HeavyRuptureShareOfSpillChance)
+                {
+                    outcome = MuleOutcome.Spilled;
+                    MuleCargoSpills++;
+                    AdjustEscalationStage(UFOSpeciesSegment.Human, +1);
+                    ApplyEducationDelta(-1f);
+                    severity = BoxSeverity.Critical;
+                    title = isWarhead ? "Warhead Casing Breached" : "Hold Ruptured";
+                    OpenHazardSite(contactId, cargo.Hazard);
+                    body = $"The squad's heavy weapons tore open the hold during the assault.\nCargo: {name}\nHazard: {hazard}\n\n" +
+                           "A hazard site is now open on the map. Press H to send the hazmat team.\n" +
+                           "A HAZMAT kit (refit with L) recovers hazardous cargo safely.";
+                    break;
+                }
+
+                outcome = MuleOutcome.Recovered;
                 ApplyEducationDelta(+0.5f);
+
+                var exposureText = string.Empty;
+                if (UnityEngine.Random.value < SquadLoadoutRules.ExposureChance(kit, cargo.Hazard))
+                {
+                    var squad = GetSquadManager();
+                    if (squad != null)
+                    {
+                        squad.RegisterExposure();
+                    }
+
+                    AddPermitRiskFromHazard(SquadLoadoutRules.ExposurePermitRisk(cargo.Hazard));
+                    exposureText = $"\n\nSquad exposed: two soldiers without sealed suits were treated for {hazard.ToLowerInvariant()} exposure. " +
+                                   "The press is asking questions. A HAZMAT kit (refit with L) prevents this.";
+                }
+                else if (kit == SquadLoadout.Hazmat && cargo.Hazard != CargoHazard.None)
+                {
+                    exposureText = "\n\nSealed suits kept the squad safe.";
+                }
+
                 if (isWarhead)
                 {
                     WarheadsSeized++;
@@ -2506,7 +2571,10 @@ public class UFOManager : MonoBehaviour
                     title = "Cargo Recovered";
                     body = $"The recovery team secured the hold intact.\nCargo: {name}\nHazard: {hazard}\n\nEvidence logged. The network will feel this.";
                 }
+
+                body += exposureText;
                 break;
+            }
 
             case UFOResponseChoice.Intercept:
             {
@@ -2583,6 +2651,10 @@ public class UFOManager : MonoBehaviour
         if (network != null)
         {
             network.OnMuleOutcome(contactId, cargo, outcome);
+            if (outcome == MuleOutcome.Recovered && GetSquadLoadout() == SquadLoadout.Recon)
+            {
+                network.AddBonusLeads(SquadLoadoutRules.ReconExtraLeads, $"Contact #{contactId}: the recon squad photographed the hold's shipping marks");
+            }
         }
     }
 
@@ -2598,15 +2670,42 @@ public class UFOManager : MonoBehaviour
         var network = SmugglingNetwork.Instance != null ? SmugglingNetwork.Instance : GetComponent<SmugglingNetwork>();
         if (network != null && network.InformantActive)
         {
-            return $"Cargo (informant): {MuleCargoRules.DisplayName(cargo.Type)}. Hazard: {MuleCargoRules.HazardLabel(cargo.Hazard)}.";
+            return $"Cargo (informant): {MuleCargoRules.DisplayName(cargo.Type)}. Hazard: {MuleCargoRules.HazardLabel(cargo.Hazard)}.\n" +
+                   BuildSquadKitTip(cargo.Hazard, hazardKnown: true);
         }
 
         if (network != null && network.CourierRouteKnown)
         {
-            return $"Cargo: UNKNOWN. Hazard class (courier route intel): {MuleCargoRules.HazardLabel(cargo.Hazard)}.";
+            return $"Cargo: UNKNOWN. Hazard class (courier route intel): {MuleCargoRules.HazardLabel(cargo.Hazard)}.\n" +
+                   BuildSquadKitTip(cargo.Hazard, hazardKnown: true);
         }
 
-        return "Cargo: UNKNOWN. Could be harmless, toxic, or worse.";
+        return "Cargo: UNKNOWN. Could be harmless, toxic, or worse.\n" + BuildSquadKitTip(cargo.Hazard, hazardKnown: false);
+    }
+
+    /// <summary>Which kit suits a Dispatch on this Mule, plus the kit the squad carries now.</summary>
+    private string BuildSquadKitTip(CargoHazard hazard, bool hazardKnown)
+    {
+        var current = $"Squad kit now: {SquadLoadoutRules.Label(GetSquadLoadout())} [L].";
+        if (!hazardKnown)
+        {
+            return $"Tip: a HAZMAT kit recovers any cargo safely. {current}";
+        }
+
+        return hazard == CargoHazard.None
+            ? $"Tip: any kit is safe; RECON finds an extra network lead. {current}"
+            : $"Tip: HAZMAT kit for a safe recovery; HEAVY may rupture the hold. {current}";
+    }
+
+    private SquadManager GetSquadManager()
+    {
+        return SquadManager.Instance != null ? SquadManager.Instance : GetComponent<SquadManager>();
+    }
+
+    private SquadLoadout GetSquadLoadout()
+    {
+        var squad = GetSquadManager();
+        return squad != null ? squad.Loadout : SquadLoadout.Standard;
     }
 
     /// <summary>Raise or lower the human smuggler escalation stage (used by network story events).</summary>

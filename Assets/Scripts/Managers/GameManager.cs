@@ -68,6 +68,9 @@ public class GameManager : MonoBehaviour
         public int hazardSitesContained;
         public int regionsContaminated;
         public string networkStateJson;
+        public string hazardSitesJson;
+        public string squadLoadout;
+        public int squadExposures;
         public string commanderName;
     }
 
@@ -100,6 +103,7 @@ public class GameManager : MonoBehaviour
     [SerializeField] private int warheadDeliveredPenaltyWeight = 600;
     [SerializeField] private int hazardSiteContainedBonusWeight = 150;
     [SerializeField] private int regionContaminatedPenaltyWeight = 500;
+    [SerializeField] private int squadExposurePenaltyWeight = 100;
     [SerializeField] private float fallbackTimeScoreMultiplier = 0.8f;
 
     [Header("Medals")]
@@ -184,6 +188,7 @@ public class GameManager : MonoBehaviour
         warheadDeliveredPenaltyWeight = Mathf.Max(0, warheadDeliveredPenaltyWeight);
         hazardSiteContainedBonusWeight = Mathf.Max(0, hazardSiteContainedBonusWeight);
         regionContaminatedPenaltyWeight = Mathf.Max(0, regionContaminatedPenaltyWeight);
+        squadExposurePenaltyWeight = Mathf.Max(0, squadExposurePenaltyWeight);
         fallbackTimeScoreMultiplier = Mathf.Max(0f, fallbackTimeScoreMultiplier);
 
         bronzeScoreThreshold = Mathf.Max(0, bronzeScoreThreshold);
@@ -435,7 +440,8 @@ public class GameManager : MonoBehaviour
         var body = CreatePanelLabel(
             messageBox.transform,
             "ReadyBody",
-            "You are about to enter command operations.\nReview the board, then press OK to begin.",
+            "You are about to enter command operations.\nReview the board, then press OK to begin.\n\n" +
+            "Keys: 1-4 respond  |  L squad kit  |  H hazmat team  |  Esc menu",
             20,
             new Vector2(0f, -72f));
         body.alignment = TextAnchor.UpperCenter;
@@ -701,12 +707,19 @@ public class GameManager : MonoBehaviour
         if (hazardSites != null)
         {
             hazardSites.ApplyPersistentState(state.hazardSitesContained, state.regionsContaminated);
+            hazardSites.ImportOpenSitesJson(state.hazardSitesJson);
         }
 
         var network = GetSmugglingNetwork();
         if (network != null)
         {
             network.ImportStateJson(state.networkStateJson);
+        }
+
+        var squad = GetSquad();
+        if (squad != null)
+        {
+            squad.ApplyPersistentState(state.squadLoadout, state.squadExposures);
         }
     }
 
@@ -822,6 +835,8 @@ public class GameManager : MonoBehaviour
                     "Core controls:\n" +
                     "1-3: Strategic Priority (Coverage / Research / Response)\n" +
                     "1-4: Contact Response (Ignore / Track / Intercept / Dispatch)\n" +
+                    "H: Send the hazmat team to the oldest hazard site (left when a Mule spills cargo)\n" +
+                    "L: Change the squad kit used by Dispatch (Standard / Hazmat / Heavy / Recon)\n" +
                     "Box Feed: Read 'Archangel Protocol Brief' posts for live intent clues\n" +
                     "Esc: Dismiss non-interactive messages\n\n" +
                     "Choose a priority. The pattern will answer.");
@@ -836,6 +851,8 @@ public class GameManager : MonoBehaviour
                 "Core controls:\n" +
                 "1-3: Strategic Priority (Coverage / Research / Response)\n" +
                 "1-4: Contact Response (Ignore / Track / Intercept / Dispatch)\n" +
+                "H: Send the hazmat team to the oldest hazard site (left when a Mule spills cargo)\n" +
+                "L: Change the squad kit used by Dispatch (Standard / Hazmat / Heavy / Recon)\n" +
                 "Box Feed: Read 'Archangel Protocol Brief' posts for live intent clues\n" +
                 "Esc: Dismiss non-interactive messages\n\n" +
                 "Start by selecting your Strategic Priority. Good luck.");
@@ -1253,7 +1270,19 @@ public class GameManager : MonoBehaviour
             BuildHazardHudText();
     }
 
+    private SquadManager GetSquad()
+    {
+        return SquadManager.Instance != null ? SquadManager.Instance : GetComponent<SquadManager>();
+    }
+
     private string BuildHazardHudText()
+    {
+        var squad = GetSquad();
+        var squadLine = squad != null ? "\n" + squad.BuildHudLine() : string.Empty;
+        return squadLine + BuildHazardAndNetworkHudText();
+    }
+
+    private string BuildHazardAndNetworkHudText()
     {
         var sites = GetHazardSites();
         var line = sites != null ? sites.BuildHudLine() : string.Empty;
@@ -1339,8 +1368,10 @@ public class GameManager : MonoBehaviour
         var contaminated = hazardSites != null ? hazardSites.RegionsContaminated : 0;
 
         var networkLines = GetNetworkScoreLines();
+        var squad = GetSquad();
+        var exposures = squad != null ? squad.Exposures : 0;
 
-        if (ufo == null || (ufo.WarheadsSeized == 0 && ufo.MuleCargoSpills == 0 && ufo.WarheadsDelivered == 0 && contained == 0 && contaminated == 0 && networkLines.Count == 0))
+        if (ufo == null || (ufo.WarheadsSeized == 0 && ufo.MuleCargoSpills == 0 && ufo.WarheadsDelivered == 0 && contained == 0 && contaminated == 0 && exposures == 0 && networkLines.Count == 0))
         {
             return string.Empty;
         }
@@ -1371,6 +1402,11 @@ public class GameManager : MonoBehaviour
         if (ufo.MuleCargoSpills > 0)
         {
             parts.Add($"<color=#FF9B9B>- Cargo spills ({ufo.MuleCargoSpills}): {ufo.MuleCargoSpills * cargoSpillPenaltyWeight}</color>");
+        }
+
+        if (exposures > 0)
+        {
+            parts.Add($"<color=#FF9B9B>- Squad exposures ({exposures}): {exposures * squadExposurePenaltyWeight}</color>");
         }
 
         if (ufo.WarheadsDelivered > 0)
@@ -1419,6 +1455,8 @@ public class GameManager : MonoBehaviour
         var hazardSites = GetHazardSites();
         var containedBonus = hazardSites != null ? hazardSites.SitesContained * hazardSiteContainedBonusWeight : 0;
         var contaminationPenalty = hazardSites != null ? hazardSites.RegionsContaminated * regionContaminatedPenaltyWeight : 0;
+        var squad = GetSquad();
+        var exposurePenalty = squad != null ? squad.Exposures * squadExposurePenaltyWeight : 0;
 
         var networkPoints = 0;
         foreach (var line in GetNetworkScoreLines())
@@ -1427,7 +1465,7 @@ public class GameManager : MonoBehaviour
         }
 
         var rawScore = Mathf.Max(0, baseScore + contactCoverage + educationScore + survivalBonus + warheadBonus + containedBonus + networkPoints
-                                    - missPenalty - riskPenalty - spillPenalty - deliveredPenalty - contaminationPenalty);
+                                    - missPenalty - riskPenalty - spillPenalty - deliveredPenalty - contaminationPenalty - exposurePenalty);
         return ApplyDifficultyScoreMultiplier(rawScore);
     }
 

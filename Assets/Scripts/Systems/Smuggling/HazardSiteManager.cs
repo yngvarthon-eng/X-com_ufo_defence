@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
@@ -47,6 +48,31 @@ namespace XCon.Smuggling
         };
     }
 
+    /// <summary>One open hazard site in the save slot.</summary>
+    [Serializable]
+    public sealed class HazardSiteSave
+    {
+        public int id;
+        public int contactId;
+        public int hazard;
+        public float openSeconds;
+        public bool contaminated;
+        public float x;
+        public float y;
+    }
+
+    /// <summary>Open hazard sites and the hazmat team in the save slot.</summary>
+    [Serializable]
+    public sealed class HazardSitesSave
+    {
+        public int nextSiteId = 1;
+        public int hazmatTargetId; // 0 = team idle.
+        public float hazmatRemainingSeconds;
+        public int squadTargetId; // 0 = squad not on a site.
+        public float squadRemainingSeconds;
+        public List<HazardSiteSave> sites = new();
+    }
+
     /// <summary>
     /// Hazard sites left by Mules that spill their cargo when shot down.
     /// Open sites drain permit risk until the single hazmat team (key H) contains them.
@@ -60,6 +86,7 @@ namespace XCon.Smuggling
             public CargoHazard Hazard;
             public float OpenSeconds; // Gameplay time the site has been open (pause-aware).
             public bool Contaminated;
+            public Vector2 ViewportPosition;
             public RectTransform Marker;
             public Image Ring;
         }
@@ -72,6 +99,10 @@ namespace XCon.Smuggling
         private HazardSite hazmatTarget;
         private float hazmatRemainingSeconds;
 
+        // A squad with the HAZMAT kit can work a second site at the same time.
+        private HazardSite squadTarget;
+        private float squadRemainingSeconds;
+
         private UFOManager ufo;
         private RectTransform markerLayer;
         private static Sprite ringSprite;
@@ -80,6 +111,9 @@ namespace XCon.Smuggling
         public int RegionsContaminated { get; private set; }
         public int OpenSiteCount => openSites.Count;
         public bool HazmatBusy => hazmatTarget != null;
+        public bool SquadOnSite => squadTarget != null;
+        public int SquadSiteId => squadTarget != null ? squadTarget.Id : 0;
+        public float SquadRemainingSeconds => squadRemainingSeconds;
 
         private void Awake()
         {
@@ -95,11 +129,114 @@ namespace XCon.Smuggling
             }
         }
 
-        /// <summary>Restore totals from a save. Open sites themselves are not saved.</summary>
+        /// <summary>Restore totals from a save. Open sites come back through <see cref="ImportOpenSitesJson"/>.</summary>
         public void ApplyPersistentState(int loadedSitesContained, int loadedRegionsContaminated)
         {
             SitesContained = Mathf.Max(0, loadedSitesContained);
             RegionsContaminated = Mathf.Max(0, loadedRegionsContaminated);
+        }
+
+        public string ExportOpenSitesJson()
+        {
+            var save = new HazardSitesSave
+            {
+                nextSiteId = nextSiteId,
+                hazmatTargetId = hazmatTarget != null ? hazmatTarget.Id : 0,
+                hazmatRemainingSeconds = hazmatRemainingSeconds,
+                squadTargetId = squadTarget != null ? squadTarget.Id : 0,
+                squadRemainingSeconds = squadRemainingSeconds,
+            };
+
+            foreach (var site in openSites)
+            {
+                save.sites.Add(new HazardSiteSave
+                {
+                    id = site.Id,
+                    contactId = site.ContactId,
+                    hazard = (int)site.Hazard,
+                    openSeconds = site.OpenSeconds,
+                    contaminated = site.Contaminated,
+                    x = site.ViewportPosition.x,
+                    y = site.ViewportPosition.y,
+                });
+            }
+
+            return JsonUtility.ToJson(save);
+        }
+
+        /// <summary>Recreate open sites (with markers) and the hazmat job from a save.</summary>
+        public void ImportOpenSitesJson(string json)
+        {
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                return;
+            }
+
+            var save = JsonUtility.FromJson<HazardSitesSave>(json);
+            if (save == null || save.sites == null)
+            {
+                return;
+            }
+
+            foreach (var site in openSites)
+            {
+                if (site.Marker != null)
+                {
+                    Destroy(site.Marker.gameObject);
+                }
+            }
+
+            openSites.Clear();
+            hazmatTarget = null;
+            hazmatRemainingSeconds = 0f;
+            squadTarget = null;
+            squadRemainingSeconds = 0f;
+
+            var maxId = 0;
+            foreach (var saved in save.sites)
+            {
+                if (saved == null || !Enum.IsDefined(typeof(CargoHazard), saved.hazard) || saved.hazard == (int)CargoHazard.None)
+                {
+                    continue;
+                }
+
+                var site = new HazardSite
+                {
+                    Id = saved.id,
+                    ContactId = saved.contactId,
+                    Hazard = (CargoHazard)saved.hazard,
+                    OpenSeconds = Mathf.Max(0f, saved.openSeconds),
+                    Contaminated = saved.contaminated,
+                };
+                CreateMarker(site, new Vector2(saved.x, saved.y));
+                openSites.Add(site);
+                maxId = Mathf.Max(maxId, site.Id);
+
+                if (saved.id == save.hazmatTargetId)
+                {
+                    hazmatTarget = site;
+                    hazmatRemainingSeconds = Mathf.Max(0.1f, save.hazmatRemainingSeconds);
+                }
+                else if (saved.id == save.squadTargetId)
+                {
+                    squadTarget = site;
+                    squadRemainingSeconds = Mathf.Max(0.1f, save.squadRemainingSeconds);
+                }
+            }
+
+            nextSiteId = Mathf.Max(save.nextSiteId, maxId + 1);
+
+            if (openSites.Count > 0)
+            {
+                Publish(
+                    "hazard/restored",
+                    BoxSeverity.Warn,
+                    "Hazard Sites Open",
+                    $"{openSites.Count} hazard site(s) are still open from the saved mission.\n" +
+                    (hazmatTarget != null
+                        ? $"The hazmat team is on site #{hazmatTarget.Id}, done in {FormatSeconds(hazmatRemainingSeconds)}."
+                        : "Press H to send the hazmat team to the oldest site."));
+            }
         }
 
         /// <summary>Open a hazard site at a viewport position (0..1). Returns false for harmless cargo.</summary>
@@ -129,7 +266,8 @@ namespace XCon.Smuggling
                 (hazard == CargoHazard.Radioactive
                     ? $"Contain within {Mathf.RoundToInt(HazardSiteRules.RadioactiveContaminationSeconds / 60f)} min or the region is contaminated.\n"
                     : string.Empty) +
-                $"\nPress H to send the hazmat team ({Mathf.RoundToInt(HazardSiteRules.ContainmentSeconds(hazard))} s on site).");
+                $"\nPress H to send the hazmat team. It goes to the oldest open site, handles one site at a time " +
+                $"and needs {Mathf.RoundToInt(HazardSiteRules.ContainmentSeconds(hazard))} s on this one.");
             return true;
         }
 
@@ -193,21 +331,33 @@ namespace XCon.Smuggling
 
         private void TickHazmat(float dt)
         {
-            if (hazmatTarget == null)
+            if (hazmatTarget != null)
             {
-                return;
+                hazmatRemainingSeconds -= dt;
+                if (hazmatRemainingSeconds <= 0f)
+                {
+                    var site = hazmatTarget;
+                    hazmatTarget = null;
+                    hazmatRemainingSeconds = 0f;
+                    CompleteContainment(site, "The hazmat team");
+                }
             }
 
-            hazmatRemainingSeconds -= dt;
-            if (hazmatRemainingSeconds > 0f)
+            if (squadTarget != null)
             {
-                return;
+                squadRemainingSeconds -= dt;
+                if (squadRemainingSeconds <= 0f)
+                {
+                    var site = squadTarget;
+                    squadTarget = null;
+                    squadRemainingSeconds = 0f;
+                    CompleteContainment(site, "The squad (HAZMAT kit)");
+                }
             }
+        }
 
-            var site = hazmatTarget;
-            hazmatTarget = null;
-            hazmatRemainingSeconds = 0f;
-
+        private void CompleteContainment(HazardSite site, string who)
+        {
             openSites.Remove(site);
             if (site.Marker != null)
             {
@@ -220,48 +370,111 @@ namespace XCon.Smuggling
                 ufo.AddEducationFromHazard(HazardSiteRules.ContainedEducationGain);
             }
 
+            var waiting = CountUnworkedSites();
             Publish(
                 $"hazard/contained/{site.Id}",
                 BoxSeverity.Info,
                 "Site Contained",
-                $"The hazmat team has sealed site #{site.Id} ({MuleCargoRules.HazardLabel(site.Hazard)}).\n" +
-                (openSites.Count > 0 ? $"{openSites.Count} site(s) still open. Press H to send the team again." : "No open hazard sites remain."));
+                $"{who} has sealed site #{site.Id} ({MuleCargoRules.HazardLabel(site.Hazard)}).\n" +
+                (openSites.Count == 0
+                    ? "No open hazard sites remain."
+                    : waiting > 0
+                        ? $"{waiting} site(s) still waiting. Press H to send a team."
+                        : $"{openSites.Count} site(s) still open, all being worked."));
+        }
+
+        private int CountUnworkedSites()
+        {
+            var count = 0;
+            foreach (var site in openSites)
+            {
+                if (site != hazmatTarget && site != squadTarget)
+                {
+                    count++;
+                }
+            }
+
+            return count;
+        }
+
+        private HazardSite OldestUnworkedSite()
+        {
+            // The list is kept in creation order.
+            foreach (var site in openSites)
+            {
+                if (site != hazmatTarget && site != squadTarget)
+                {
+                    return site;
+                }
+            }
+
+            return null;
+        }
+
+        private static bool SquadCanContain(out SquadManager squad)
+        {
+            squad = SquadManager.Instance;
+            return squad != null && squad.Loadout == SquadLoadout.Hazmat;
         }
 
         private void DispatchHazmat()
         {
-            if (hazmatTarget != null)
-            {
-                Publish(
-                    "hazard/hazmat/busy",
-                    BoxSeverity.Info,
-                    "Hazmat Team Busy",
-                    $"The team is still on site #{hazmatTarget.Id}. Done in {FormatSeconds(hazmatRemainingSeconds)}.");
-                return;
-            }
-
             if (openSites.Count == 0)
             {
                 Publish("hazard/hazmat/idle", BoxSeverity.Info, "Hazmat Team", "No open hazard sites.");
                 return;
             }
 
-            // Oldest first: the list is kept in creation order.
-            hazmatTarget = openSites[0];
-            hazmatRemainingSeconds = HazardSiteRules.ContainmentSeconds(hazmatTarget.Hazard);
+            var site = OldestUnworkedSite();
+            if (site == null)
+            {
+                Publish(
+                    "hazard/hazmat/allworked",
+                    BoxSeverity.Info,
+                    "All Sites Worked",
+                    "Every open site already has a team on it.");
+                return;
+            }
+
+            if (hazmatTarget == null)
+            {
+                hazmatTarget = site;
+                hazmatRemainingSeconds = HazardSiteRules.ContainmentSeconds(site.Hazard);
+                Publish(
+                    $"hazard/hazmat/{site.Id}",
+                    BoxSeverity.Info,
+                    "Hazmat Dispatched",
+                    $"The hazmat team is heading to site #{site.Id} ({MuleCargoRules.HazardLabel(site.Hazard)}).\n" +
+                    $"Containment takes {FormatSeconds(hazmatRemainingSeconds)}." +
+                    (CountUnworkedSites() > 0 && SquadCanContain(out _) ? "\nPress H again to send the squad (HAZMAT kit) to the next site." : string.Empty));
+                return;
+            }
+
+            if (squadTarget == null && SquadCanContain(out _))
+            {
+                squadTarget = site;
+                squadRemainingSeconds = HazardSiteRules.ContainmentSeconds(site.Hazard);
+                Publish(
+                    $"hazard/squad/{site.Id}",
+                    BoxSeverity.Info,
+                    "Squad On Site",
+                    $"The squad, in sealed suits, is heading to site #{site.Id} ({MuleCargoRules.HazardLabel(site.Hazard)}).\n" +
+                    $"Containment takes {FormatSeconds(squadRemainingSeconds)}. Dispatch (4) still works meanwhile.");
+                return;
+            }
 
             Publish(
-                $"hazard/hazmat/{hazmatTarget.Id}",
+                "hazard/hazmat/busy",
                 BoxSeverity.Info,
-                "Hazmat Dispatched",
-                $"The hazmat team is heading to site #{hazmatTarget.Id} ({MuleCargoRules.HazardLabel(hazmatTarget.Hazard)}).\n" +
-                $"Containment takes {FormatSeconds(hazmatRemainingSeconds)}.");
+                "Hazmat Team Busy",
+                $"The team is still on site #{hazmatTarget.Id}. Done in {FormatSeconds(hazmatRemainingSeconds)}." +
+                (squadTarget == null ? "\nA squad with the HAZMAT kit (refit with L) could take a second site." : string.Empty));
         }
 
         /// <summary>One HUD line, or empty when there is nothing to show.</summary>
         public string BuildHudLine()
         {
-            if (openSites.Count == 0 && hazmatTarget == null)
+            if (openSites.Count == 0 && hazmatTarget == null && squadTarget == null)
             {
                 return string.Empty;
             }
@@ -279,7 +492,8 @@ namespace XCon.Smuggling
                 ? $"{openSites.Count} open (<color=#FF8A8A>{radioactive} RADIOACTIVE</color>)"
                 : $"{openSites.Count} open";
             var team = hazmatTarget != null ? $"busy {FormatSeconds(hazmatRemainingSeconds)}" : "ready [H]";
-            return $"Hazard sites: {sites}  |  Hazmat: {team}";
+            var squad = squadTarget != null ? $"  |  Squad on #{squadTarget.Id} {FormatSeconds(squadRemainingSeconds)}" : string.Empty;
+            return $"Hazard sites: {sites}  |  Hazmat: {team}{squad}";
         }
 
         private static string FormatSeconds(float seconds)
@@ -290,7 +504,7 @@ namespace XCon.Smuggling
 
         private static void Publish(string key, BoxSeverity severity, string title, string body)
         {
-            var queue = BoxMessageQueue.Instance != null ? BoxMessageQueue.Instance : Object.FindAnyObjectByType<BoxMessageQueue>();
+            var queue = BoxMessageQueue.Instance != null ? BoxMessageQueue.Instance : UnityEngine.Object.FindAnyObjectByType<BoxMessageQueue>();
             if (queue == null)
             {
                 return;
@@ -356,6 +570,7 @@ namespace XCon.Smuggling
             markerGo.transform.SetParent(markerLayer, false);
             var rect = markerGo.GetComponent<RectTransform>();
             var clamped = new Vector2(Mathf.Clamp(viewportPosition.x, 0.08f, 0.92f), Mathf.Clamp(viewportPosition.y, 0.12f, 0.9f));
+            site.ViewportPosition = clamped;
             rect.anchorMin = clamped;
             rect.anchorMax = clamped;
             rect.pivot = new Vector2(0.5f, 0.5f);
@@ -414,7 +629,7 @@ namespace XCon.Smuggling
                 site.Ring.color = baseColor;
 
                 var scale = radioactive ? Mathf.Lerp(0.9f, 1.15f, pulse) : 1f;
-                if (site == hazmatTarget)
+                if (site == hazmatTarget || site == squadTarget)
                 {
                     scale *= 0.85f; // Team on site: ring tightens.
                 }
@@ -472,7 +687,7 @@ namespace XCon.Smuggling
                 return;
             }
 
-            CreateSite(contactId: 0, hazard, new Vector2(Random.Range(0.25f, 0.75f), Random.Range(0.3f, 0.7f)));
+            CreateSite(contactId: 0, hazard, new Vector2(UnityEngine.Random.Range(0.25f, 0.75f), UnityEngine.Random.Range(0.3f, 0.7f)));
         }
     }
 }

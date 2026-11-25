@@ -122,6 +122,45 @@ namespace XCon.UI.Boxes
             SetCurrent(DequeueBestOrNull());
         }
 
+        /// <summary>Frame on which a key press (Esc / `) last dismissed a message.</summary>
+        public static int LastKeyDismissFrame { get; private set; } = -1;
+
+        /// <summary>
+        /// Dismiss the current message in response to a key press. Several components listen for
+        /// the dismiss key, so only the first call per frame acts; the rest are ignored. Returns
+        /// true if a message was dismissed this frame, so other Esc handlers (the game menu) can
+        /// leave the key press alone.
+        /// </summary>
+        public bool DismissCurrentFromKeyPress()
+        {
+            if (LastKeyDismissFrame == Time.frameCount)
+            {
+                return true;
+            }
+
+            // While the game menu is open, Esc closes the menu and leaves messages alone.
+            if (GameMenuController.IsMenuOpen)
+            {
+                return false;
+            }
+
+            if (!current.HasValue)
+            {
+                return false;
+            }
+
+            // Response choices must be answered (1-4), never skipped with Esc.
+            var key = current.Value.TriggerKey;
+            if (!string.IsNullOrWhiteSpace(key) && key.StartsWith("ufo/response_choice/", StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            LastKeyDismissFrame = Time.frameCount;
+            DismissCurrent();
+            return true;
+        }
+
         public bool DismissIfCurrent(string triggerKey)
         {
             if (string.IsNullOrWhiteSpace(triggerKey))

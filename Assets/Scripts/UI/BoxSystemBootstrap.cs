@@ -78,6 +78,15 @@ namespace XCon.UI.Boxes
         private BoxMessageQueue queue;
         private bool subscribed;
 
+        // Short fade/pop when a different message takes the box, so a replacement is noticeable
+        // (two similar-looking posts in a row otherwise read as "nothing happened").
+        private const float SwapAnimSeconds = 0.35f;
+        private const float SwapStartAlpha = 0.1f;
+        private const float SwapStartScale = 0.96f;
+        private CanvasGroup panelGroup;
+        private string shownMessageId;
+        private float swapAnimElapsed = SwapAnimSeconds;
+
         public void BuildUI()
         {
             var canvasGo = new GameObject("BoxCanvas", typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
@@ -96,6 +105,7 @@ namespace XCon.UI.Boxes
 
             panelImage = panel.GetComponent<Image>();
             panelImage.color = InfoPanelColor;
+            panelGroup = panel.AddComponent<CanvasGroup>();
 
             var panelRect = panel.GetComponent<RectTransform>();
             panelRect.anchorMin = new Vector2(0.02f, 0.00f);
@@ -151,8 +161,31 @@ namespace XCon.UI.Boxes
             TrySubscribe();
         }
 
+        private void ApplySwapAnim(float t01)
+        {
+            if (!panel)
+            {
+                return;
+            }
+
+            var eased = 1f - (1f - t01) * (1f - t01); // ease-out
+            if (panelGroup)
+            {
+                panelGroup.alpha = Mathf.Lerp(SwapStartAlpha, 1f, eased);
+            }
+
+            panel.transform.localScale = Vector3.one * Mathf.Lerp(SwapStartScale, 1f, eased);
+        }
+
         private void Update()
         {
+            if (swapAnimElapsed < SwapAnimSeconds)
+            {
+                // Unscaled so it still plays while the game is paused.
+                swapAnimElapsed = Mathf.Min(SwapAnimSeconds, swapAnimElapsed + Time.unscaledDeltaTime);
+                ApplySwapAnim(swapAnimElapsed / SwapAnimSeconds);
+            }
+
             // In some editor/playmode configurations, Instance may not be available at BuildUI time.
             if (!subscribed)
             {
@@ -198,7 +231,7 @@ namespace XCon.UI.Boxes
 
             if (dismissPressed)
             {
-                queue.DismissCurrent();
+                queue.DismissCurrentFromKeyPress();
             }
         }
 
@@ -313,11 +346,21 @@ namespace XCon.UI.Boxes
             if (!message.HasValue)
             {
                 panel.SetActive(false);
+                shownMessageId = null;
                 return;
             }
 
             var m = message.Value;
             panel.SetActive(true);
+
+            // Refresh also runs for in-place updates (e.g. countdowns); only animate a new message.
+            var messageId = $"{m.TriggerKey}|{m.Title}";
+            if (messageId != shownMessageId)
+            {
+                shownMessageId = messageId;
+                swapAnimElapsed = 0f;
+                ApplySwapAnim(0f);
+            }
 
             titleText.text = m.Title;
             bodyText.text = m.Body;
@@ -486,7 +529,7 @@ namespace XCon.UI.Boxes
 
             if (WasPressed(DebugKey.Dismiss))
             {
-                queue.DismissCurrent();
+                queue.DismissCurrentFromKeyPress();
             }
         }
 

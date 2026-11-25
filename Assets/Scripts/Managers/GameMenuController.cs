@@ -42,6 +42,9 @@ public class GameMenuController : MonoBehaviour
 
     private GameObject menuPanel;
     public static bool IsPaused { get; private set; }
+
+    /// <summary>True while the in-game menu panel is shown. Esc then belongs to the menu.</summary>
+    public static bool IsMenuOpen { get; private set; }
     public static event Action<bool> PauseStateChanged;
 
     private bool menuForcedPause;
@@ -62,6 +65,7 @@ public class GameMenuController : MonoBehaviour
     private static void ResetPauseStateOnSubsystemRegistration()
     {
         IsPaused = false;
+        IsMenuOpen = false;
         Time.timeScale = 1f;
         AudioListener.pause = false;
         PauseStateChanged = null;
@@ -77,6 +81,21 @@ public class GameMenuController : MonoBehaviour
         if (!IsEscapePressedThisFrame())
         {
             TryCloseMenuFromOutsidePointerPress();
+        }
+    }
+
+    // Esc is handled in LateUpdate so the message box has already had its turn this frame:
+    // if that press dismissed a message, it shouldn't also open the menu.
+    private void LateUpdate()
+    {
+        if (!IsEscapePressedThisFrame())
+        {
+            return;
+        }
+
+        var menuOpen = menuPanel != null && menuPanel.activeSelf;
+        if (!menuOpen && XCon.UI.Boxes.BoxMessageQueue.LastKeyDismissFrame == Time.frameCount)
+        {
             return;
         }
 
@@ -85,6 +104,8 @@ public class GameMenuController : MonoBehaviour
 
     private void OnDestroy()
     {
+        IsMenuOpen = false; // e.g. Play Again reloads the scene while the menu is open.
+
         if (statusToastCoroutine != null)
         {
             StopCoroutine(statusToastCoroutine);
@@ -501,6 +522,7 @@ public class GameMenuController : MonoBehaviour
         }
 
         menuPanel.SetActive(visible);
+        IsMenuOpen = visible;
 
         if (visible)
         {

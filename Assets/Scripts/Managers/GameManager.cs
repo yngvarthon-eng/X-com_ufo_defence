@@ -15,6 +15,8 @@ public class GameManager : MonoBehaviour
     public static GameManager Instance { get; private set; }
 
     private const string RootName = "GameManager";
+    private const float MissionHudWidth = 420f;
+    private const float MissionHudMinHeight = 138f;
 
     public enum StrategicPriority
     {
@@ -417,10 +419,11 @@ public class GameManager : MonoBehaviour
         panelImage.color = new Color(0f, 0f, 0f, 0.9f);
 
         var panelRect = readyToPlayPanel.GetComponent<RectTransform>();
-        panelRect.anchorMin = new Vector2(0.5f, 0.5f);
-        panelRect.anchorMax = new Vector2(0.5f, 0.5f);
-        panelRect.pivot = new Vector2(0.5f, 0.5f);
-        panelRect.anchoredPosition = new Vector2(0f, 120f);
+        // Sit in the bottom half so it doesn't cover the top-of-screen boxes.
+        panelRect.anchorMin = new Vector2(0.5f, 0f);
+        panelRect.anchorMax = new Vector2(0.5f, 0f);
+        panelRect.pivot = new Vector2(0.5f, 0f);
+        panelRect.anchoredPosition = new Vector2(0f, 30f);
         panelRect.sizeDelta = new Vector2(680f, 460f);
 
         var messageBox = new GameObject("ReadyMessageBox", typeof(Image));
@@ -434,8 +437,10 @@ public class GameManager : MonoBehaviour
         messageBoxRect.anchoredPosition = new Vector2(0f, -22f);
         messageBoxRect.sizeDelta = new Vector2(620f, 220f);
 
-        var title = CreatePanelLabel(messageBox.transform, "ReadyTitle", "Get Ready To Play", 36, new Vector2(0f, -28f));
+        var title = CreatePanelLabel(messageBox.transform, "ReadyTitle", "Get Ready To Play", 36, new Vector2(0f, -16f));
         title.alignment = TextAnchor.MiddleCenter;
+        // Default label rect is 220 tall; centred text in it landed on top of the body below.
+        title.rectTransform.sizeDelta = new Vector2(560f, 48f);
 
         var body = CreatePanelLabel(
             messageBox.transform,
@@ -443,7 +448,7 @@ public class GameManager : MonoBehaviour
             "You are about to enter command operations.\nReview the board, then press OK to begin.\n\n" +
             "Keys: 1-4 respond  |  L squad kit  |  H hazmat team  |  Esc menu",
             20,
-            new Vector2(0f, -72f));
+            new Vector2(0f, -76f));
         body.alignment = TextAnchor.UpperCenter;
         body.rectTransform.sizeDelta = new Vector2(560f, 120f);
 
@@ -456,7 +461,7 @@ public class GameManager : MonoBehaviour
         readySkipToggle.SetIsOnWithoutNotify(false);
         readySkipToggle.onValueChanged.AddListener(OnReadySkipNextTimeChanged);
 
-        readyDifficultyButton = CreatePanelButton(readyToPlayPanel.transform, "ReadyDifficultyButton", BuildDifficultyButtonLabel(), new Vector2(0f, -282f), new Vector2(300f, 44f));
+        readyDifficultyButton = CreatePanelButton(readyToPlayPanel.transform, "ReadyDifficultyButton", BuildDifficultyButtonLabel(), new Vector2(0f, -282f), new Vector2(420f, 44f));
         readyDifficultyButton.onClick.AddListener(CycleDifficultyOnReadyPanel);
 
         var okButton = CreatePanelButton(readyToPlayPanel.transform, "ReadyOkButton", "OK", new Vector2(0f, -396f), new Vector2(180f, 48f));
@@ -1112,6 +1117,13 @@ public class GameManager : MonoBehaviour
         cuePlayer?.PlayMoodShiftMilitary();
     }
 
+    // Playtest helpers: right-click the GameManager component in the Inspector during Play mode.
+    [ContextMenu("Debug/End Mission Now (Victory)")]
+    private void DebugEndMissionVictory() => EndMission(MissionEndReason.Victory, GetComponent<UFOManager>());
+
+    [ContextMenu("Debug/End Mission Now (Permit Risk Failure)")]
+    private void DebugEndMissionFailure() => EndMission(MissionEndReason.PermitRiskFailure, GetComponent<UFOManager>());
+
     private void EndMission(MissionEndReason reason, UFOManager ufo)
     {
         if (missionEnded)
@@ -1194,7 +1206,7 @@ public class GameManager : MonoBehaviour
         panelRect.anchorMax = new Vector2(0f, 1f);
         panelRect.pivot = new Vector2(0f, 1f);
         panelRect.anchoredPosition = new Vector2(20f, -20f);
-        panelRect.sizeDelta = new Vector2(380f, 138f);
+        panelRect.sizeDelta = new Vector2(MissionHudWidth, MissionHudMinHeight);
 
         var labelGo = new GameObject("MissionHudLabel", typeof(Text));
         labelGo.transform.SetParent(missionHudPanel.transform, false);
@@ -1248,6 +1260,7 @@ public class GameManager : MonoBehaviour
                 $"Score: {score}  Best: {bestScore}\n" +
                 $"Priority: {currentPriority}\n" +
                 BuildExpireStreakHudText(null);
+            FitMissionHudPanelToText();
             return;
         }
 
@@ -1268,6 +1281,25 @@ public class GameManager : MonoBehaviour
             $"Education: {Mathf.RoundToInt(ufo.Education)}  PermitRisk: {Mathf.RoundToInt(ufo.PermitRisk)}\n" +
             BuildExpireStreakHudText(ufo) +
             BuildHazardHudText();
+        FitMissionHudPanelToText();
+    }
+
+    // The HUD gains lines as systems come online (squad, hazards, smuggling network),
+    // so grow the backing panel to the text instead of letting it spill over the map.
+    private void FitMissionHudPanelToText()
+    {
+        if (missionHudPanel == null || missionHudLabel == null)
+        {
+            return;
+        }
+
+        var panelRect = missionHudPanel.GetComponent<RectTransform>();
+        const float verticalPadding = 16f; // matches label offsetMin.y (8) + offsetMax.y (8)
+        var targetHeight = Mathf.Max(MissionHudMinHeight, missionHudLabel.preferredHeight + verticalPadding);
+        if (!Mathf.Approximately(panelRect.sizeDelta.y, targetHeight))
+        {
+            panelRect.sizeDelta = new Vector2(panelRect.sizeDelta.x, targetHeight);
+        }
     }
 
     private SquadManager GetSquad()
@@ -1522,6 +1554,9 @@ public class GameManager : MonoBehaviour
             missionEndPanel = null;
         }
 
+        // The message box would otherwise show through and around the end panel.
+        SetBoxCanvasVisible(false);
+
         var canvasGo = new GameObject("MissionEndCanvas", typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
         canvasGo.transform.SetParent(transform, false);
 
@@ -1544,32 +1579,48 @@ public class GameManager : MonoBehaviour
         panelRect.anchorMax = new Vector2(0.5f, 0.5f);
         panelRect.pivot = new Vector2(0.5f, 0.5f);
         panelRect.anchoredPosition = Vector2.zero;
-        panelRect.sizeDelta = new Vector2(560f, 460f);
+        // Stacked top to bottom: heading, medal, summary, buttons. Each label gets a rect sized
+        // to its own content; the 220-tall default rect let centred text drift onto its neighbours.
+        const float endPanelWidth = 640f;
+        const float endPanelHeight = 700f;
+        panelRect.sizeDelta = new Vector2(endPanelWidth, endPanelHeight);
 
         var headingText = reason == MissionEndReason.Victory
             ? $"Mission Complete, {commanderName}"
             : $"Mission Failed, {commanderName}";
-        var heading = CreatePanelLabel(missionEndPanel.transform, "Heading", headingText, 34, new Vector2(0f, -44f));
+        var heading = CreatePanelLabel(missionEndPanel.transform, "Heading", headingText, 34, new Vector2(0f, -22f));
         heading.alignment = TextAnchor.MiddleCenter;
+        heading.rectTransform.sizeDelta = new Vector2(endPanelWidth - 40f, 48f);
 
         var medalTier = GetMedalTier(score);
-        var badge = CreatePanelLabel(missionEndPanel.transform, "MedalBadge", $"{MedalTierToLabel(medalTier)} Medal", 24, new Vector2(0f, -88f));
+        var badgeText = medalTier == MedalTier.None ? MedalTierToLabel(medalTier) : $"{MedalTierToLabel(medalTier)} Medal";
+        var badge = CreatePanelLabel(missionEndPanel.transform, "MedalBadge", badgeText, 24, new Vector2(0f, -74f));
         badge.alignment = TextAnchor.MiddleCenter;
+        badge.rectTransform.sizeDelta = new Vector2(endPanelWidth - 40f, 34f);
         badge.color = GetMedalColor(medalTier);
 
         var summary = BuildMissionSummary(reason, ufo, score, bestScore, isNewBest);
-        var summaryLabel = CreatePanelLabel(missionEndPanel.transform, "Summary", summary, 18, new Vector2(0f, -156f));
+        const float summaryTop = 120f;
+        const float buttonHeight = 46f;
+        const float buttonBottomMargin = 24f;
+        const float buttonTop = endPanelHeight - buttonBottomMargin - buttonHeight;
+        var summaryLabel = CreatePanelLabel(missionEndPanel.transform, "Summary", summary, 18, new Vector2(0f, -summaryTop));
         summaryLabel.alignment = TextAnchor.UpperCenter;
+        // Mule and difficulty lines make the summary length vary; shrink to fit above the buttons.
+        summaryLabel.verticalOverflow = VerticalWrapMode.Truncate;
+        summaryLabel.resizeTextForBestFit = true;
+        summaryLabel.resizeTextMinSize = 12;
+        summaryLabel.resizeTextMaxSize = 18;
         var summaryRect = summaryLabel.rectTransform;
-        summaryRect.sizeDelta = new Vector2(500f, 210f);
+        summaryRect.sizeDelta = new Vector2(endPanelWidth - 60f, buttonTop - summaryTop - 16f);
 
         var primaryButtonText = reason == MissionEndReason.Victory ? "Play Again" : "Retry";
         var secondaryButtonText = reason == MissionEndReason.Victory ? "Continue Ops" : "Review";
 
-        var retryButton = CreatePanelButton(missionEndPanel.transform, "PrimaryActionButton", primaryButtonText, new Vector2(-95f, -392f), new Vector2(170f, 46f));
+        var retryButton = CreatePanelButton(missionEndPanel.transform, "PrimaryActionButton", primaryButtonText, new Vector2(-105f, -buttonTop), new Vector2(190f, buttonHeight));
         retryButton.onClick.AddListener(RestartMission);
 
-        var secondaryButton = CreatePanelButton(missionEndPanel.transform, "SecondaryActionButton", secondaryButtonText, new Vector2(95f, -392f), new Vector2(170f, 46f));
+        var secondaryButton = CreatePanelButton(missionEndPanel.transform, "SecondaryActionButton", secondaryButtonText, new Vector2(105f, -buttonTop), new Vector2(190f, buttonHeight));
         if (reason == MissionEndReason.Victory)
         {
             secondaryButton.onClick.AddListener(EnterFreeOpsMode);
@@ -1678,6 +1729,7 @@ public class GameManager : MonoBehaviour
     {
         freeOpsMode = false;
         GameMenuController.SetPaused(false);
+        SetBoxCanvasVisible(true);
         SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
     }
 
@@ -1700,6 +1752,7 @@ public class GameManager : MonoBehaviour
             missionHudPanel.SetActive(true);
         }
 
+        SetBoxCanvasVisible(true);
         GameMenuController.SetPaused(false);
     }
 

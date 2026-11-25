@@ -553,7 +553,9 @@ namespace XCon.Smuggling
 
             var canvas = canvasGo.GetComponent<Canvas>();
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            canvas.sortingOrder = 900;
+            // Above the message box and mission HUD (1000) so a site under them stays visible;
+            // below the game menu (1100). Markers ignore raycasts, so clicks still pass through.
+            canvas.sortingOrder = 1050;
 
             var scaler = canvasGo.GetComponent<CanvasScaler>();
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;

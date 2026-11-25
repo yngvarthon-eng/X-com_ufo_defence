@@ -2121,7 +2121,7 @@ MonoBehaviour:
   escalationRateMultiplierPerPressure: 0.16
   permitRiskRateMultiplier: 0.28
   enableResponseChoices: 1
-  responseChoiceDelaySeconds: 1.2
+  responseChoiceDelaySeconds: 4.5
   responseChoiceTimeoutSeconds: 26
   maxStoredContacts: 128
   education: 5

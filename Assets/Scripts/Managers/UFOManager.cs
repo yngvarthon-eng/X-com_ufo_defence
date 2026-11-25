@@ -131,7 +131,7 @@ public class UFOManager : MonoBehaviour
     [SerializeField] private bool enableResponseChoices = true;
     [Tooltip("Delay before showing the response choice after incident assessment (seconds).")]
     [Min(0f)]
-    [SerializeField] private float responseChoiceDelaySeconds = 1.2f;
+    [SerializeField] private float responseChoiceDelaySeconds = 4.5f;
     [Tooltip("How long the response choice stays active before it expires (seconds). 0 = never expires.")]
     [Min(0f)]
     [SerializeField] private float responseChoiceTimeoutSeconds = 26f;

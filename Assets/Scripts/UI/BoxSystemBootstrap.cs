@@ -99,25 +99,29 @@ namespace XCon.UI.Boxes
 
             var panelRect = panel.GetComponent<RectTransform>();
             panelRect.anchorMin = new Vector2(0.02f, 0.00f);
-            panelRect.anchorMax = new Vector2(0.45f, 0.32f);
+            panelRect.anchorMax = new Vector2(0.45f, 0.44f);
             panelRect.offsetMin = Vector2.zero;
             panelRect.offsetMax = Vector2.zero;
 
             var titleGo = CreateText("Title", panel.transform, fontSize: 22, fontStyle: FontStyle.Bold);
             titleText = titleGo.GetComponent<Text>();
-            SetRect(titleGo.GetComponent<RectTransform>(), new Vector2(0.03f, 0.72f), new Vector2(0.97f, 0.97f));
+            SetRect(titleGo.GetComponent<RectTransform>(), new Vector2(0.03f, 0.88f), new Vector2(0.97f, 0.98f));
 
             var sourceGo = CreateText("Source", panel.transform, fontSize: 14, fontStyle: FontStyle.Italic);
             sourceText = sourceGo.GetComponent<Text>();
             sourceText.color = new Color(1f, 1f, 1f, 0.85f);
-            SetRect(sourceGo.GetComponent<RectTransform>(), new Vector2(0.03f, 0.58f), new Vector2(0.97f, 0.72f));
+            SetRect(sourceGo.GetComponent<RectTransform>(), new Vector2(0.03f, 0.81f), new Vector2(0.97f, 0.88f));
 
             var bodyGo = CreateText("Body", panel.transform, fontSize: 18, fontStyle: FontStyle.Normal);
             bodyText = bodyGo.GetComponent<Text>();
             bodyText.color = new Color(1f, 1f, 1f, 0.95f);
             bodyText.horizontalOverflow = HorizontalWrapMode.Wrap;
             bodyText.verticalOverflow = VerticalWrapMode.Truncate;
-            SetRect(bodyGo.GetComponent<RectTransform>(), new Vector2(0.03f, 0.14f), new Vector2(0.97f, 0.56f));
+            // Long posts (e.g. the welcome brief) shrink to fit instead of being cut off.
+            bodyText.resizeTextForBestFit = true;
+            bodyText.resizeTextMinSize = 11;
+            bodyText.resizeTextMaxSize = 18;
+            SetRect(bodyGo.GetComponent<RectTransform>(), new Vector2(0.03f, 0.16f), new Vector2(0.97f, 0.80f));
 
             var queueGo = CreateText("Queue", panel.transform, fontSize: 12, fontStyle: FontStyle.Normal);
             queueText = queueGo.GetComponent<Text>();
@@ -125,14 +129,17 @@ namespace XCon.UI.Boxes
             queueText.alignment = TextAnchor.LowerLeft;
             queueText.horizontalOverflow = HorizontalWrapMode.Wrap;
             queueText.verticalOverflow = VerticalWrapMode.Truncate;
-            SetRect(queueGo.GetComponent<RectTransform>(), new Vector2(0.03f, 0.08f), new Vector2(0.97f, 0.14f));
+            queueText.resizeTextForBestFit = true;
+            queueText.resizeTextMinSize = 9;
+            queueText.resizeTextMaxSize = 12;
+            SetRect(queueGo.GetComponent<RectTransform>(), new Vector2(0.03f, 0.07f), new Vector2(0.97f, 0.16f));
 
             var hintGo = CreateText("Hint", panel.transform, fontSize: 12, fontStyle: FontStyle.Normal);
             var hintText = hintGo.GetComponent<Text>();
             hintText.text = "F1=Info  F2=Thinking  F3=Critical  Esc=Dismiss";
             hintText.color = new Color(1f, 1f, 1f, 0.6f);
             hintText.alignment = TextAnchor.LowerRight;
-            SetRect(hintGo.GetComponent<RectTransform>(), new Vector2(0.03f, 0.00f), new Vector2(0.97f, 0.10f));
+            SetRect(hintGo.GetComponent<RectTransform>(), new Vector2(0.03f, 0.00f), new Vector2(0.97f, 0.07f));
 
             panel.SetActive(false);
 
@@ -335,18 +342,24 @@ namespace XCon.UI.Boxes
             var count = Mathf.Min(maxItems, queued.Count);
             var sb = new StringBuilder(256);
 
-            sb.AppendLine("Next:");
+            // Kept on one line so it fits the short strip under the body text.
+            sb.Append("Next: ");
             for (var i = 0; i < count; i++)
             {
                 var m = queued[i];
-                sb.Append("- ");
+                if (i > 0)
+                {
+                    sb.Append("  |  ");
+                }
+
                 sb.Append(FormatTag(m));
                 sb.Append(' ');
                 sb.Append(m.Title);
-                if (i < count - 1)
-                {
-                    sb.AppendLine();
-                }
+            }
+
+            if (queued.Count > count)
+            {
+                sb.Append($"  (+{queued.Count - count} more)");
             }
 
             return sb.ToString();

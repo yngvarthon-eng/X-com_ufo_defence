@@ -37,4 +37,7 @@ cp -a "$RC_OUTPUT_DIR/." "$TARGET_DIR/"
 # Netlify needs to be told the build files are gzip-compressed.
 cp "$PROJECT_PATH/scripts/netlify/_headers" "$TARGET_DIR/_headers"
 
+# Browser tab: "X-Con U.F.O Defence" instead of Unity's default "Unity Web Player | X-Con U.F.O Defence".
+sed -i 's#<title>Unity Web Player | #<title>#' "$TARGET_DIR/index.html"
+
 echo "Release artifact prepared: $TARGET_DIR"

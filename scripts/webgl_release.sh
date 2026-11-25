@@ -34,4 +34,7 @@ mkdir -p "$TARGET_DIR"
 # Mirror RC artifacts into a versioned release folder.
 cp -a "$RC_OUTPUT_DIR/." "$TARGET_DIR/"
 
+# Netlify needs to be told the build files are gzip-compressed.
+cp "$PROJECT_PATH/scripts/netlify/_headers" "$TARGET_DIR/_headers"
+
 echo "Release artifact prepared: $TARGET_DIR"

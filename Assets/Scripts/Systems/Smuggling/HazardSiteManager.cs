@@ -521,6 +521,11 @@ namespace XCon.Smuggling
 
         private static bool WasHazmatKeyPressed()
         {
+            if (GameMenuController.IsTypingInTextField)
+            {
+                return false;
+            }
+
 #if ENABLE_INPUT_SYSTEM
             var keyboard = Keyboard.current;
             if (keyboard != null && keyboard.hKey.wasPressedThisFrame)

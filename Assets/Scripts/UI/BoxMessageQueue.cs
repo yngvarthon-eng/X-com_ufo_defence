@@ -22,6 +22,14 @@ namespace XCon.UI.Boxes
         [SerializeField] private int longMessageCharThreshold = 180;
         [SerializeField] private float longMessageExtraSeconds = 2.5f;
         [SerializeField] private int veryLongMessageManualDismissThreshold = 320;
+        [Tooltip("Very long Info/Warn/Thinking messages close after this many extra seconds instead of waiting for Esc forever.")]
+        [SerializeField] private float veryLongMessageExtraSeconds = 12.0f;
+
+        [Header("Staleness")]
+        [Tooltip("Queued Info/Thinking messages older than this are dropped instead of shown late.")]
+        [SerializeField] private float maxQueuedAgeSeconds = 45.0f;
+        [Tooltip("Queued Warn messages older than this are dropped instead of shown late.")]
+        [SerializeField] private float maxQueuedWarnAgeSeconds = 75.0f;
 
         private readonly List<BoxMessage> queue = new();
         private readonly Dictionary<string, float> lastPublishedAtByKey = new();
@@ -87,6 +95,7 @@ namespace XCon.UI.Boxes
             lastPublishedAtByKey[key] = now;
 
             message.TriggerKey = key;
+            message.PublishedAt = now;
 
             // Coalesce repeated triggers: keep only the latest per key.
             for (var i = queue.Count - 1; i >= 0; i--)
@@ -283,6 +292,31 @@ namespace XCon.UI.Boxes
             }
         }
 
+        /// <summary>
+        /// Drop queued messages that waited too long: by the time they'd show, the contact or numbers
+        /// they describe are out of date. Critical messages and response choices are never dropped.
+        /// </summary>
+        private void DropStaleQueued(float now)
+        {
+            for (var i = queue.Count - 1; i >= 0; i--)
+            {
+                var m = queue[i];
+                if (IsResponseChoiceMessage(m) || (m.Channel == BoxChannel.Info && m.Severity == BoxSeverity.Critical))
+                {
+                    continue;
+                }
+
+                var maxAge = m.Channel == BoxChannel.Info && m.Severity == BoxSeverity.Warn
+                    ? maxQueuedWarnAgeSeconds
+                    : maxQueuedAgeSeconds;
+
+                if (maxAge > 0f && now - m.PublishedAt > maxAge)
+                {
+                    queue.RemoveAt(i);
+                }
+            }
+        }
+
         private void EnsureCurrent()
         {
             if (current.HasValue)
@@ -295,6 +329,8 @@ namespace XCon.UI.Boxes
 
         private BoxMessage? DequeueBestOrNull()
         {
+            DropStaleQueued(Time.unscaledTime);
+
             if (queue.Count == 0)
             {
                 return null;
@@ -406,11 +442,6 @@ namespace XCon.UI.Boxes
             }
 
             var contentLength = GetMessageContentLength(message);
-            if (contentLength >= veryLongMessageManualDismissThreshold)
-            {
-                return null;
-            }
-
             float? baseSeconds;
 
             if (message.Channel != BoxChannel.Info)
@@ -432,6 +463,11 @@ namespace XCon.UI.Boxes
             if (!baseSeconds.HasValue)
             {
                 return null;
+            }
+
+            if (contentLength >= veryLongMessageManualDismissThreshold)
+            {
+                return baseSeconds.Value + Mathf.Max(0f, longMessageExtraSeconds) + Mathf.Max(0f, veryLongMessageExtraSeconds);
             }
 
             if (contentLength >= longMessageCharThreshold)

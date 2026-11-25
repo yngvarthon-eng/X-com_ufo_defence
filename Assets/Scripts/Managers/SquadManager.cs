@@ -261,6 +261,11 @@ public class SquadManager : MonoBehaviour
 
     private static bool WasLoadoutKeyPressed()
     {
+        if (GameMenuController.IsTypingInTextField)
+        {
+            return false;
+        }
+
 #if ENABLE_INPUT_SYSTEM
         var keyboard = Keyboard.current;
         if (keyboard != null && keyboard.lKey.wasPressedThisFrame)

@@ -39,7 +39,7 @@ public class GameManager : MonoBehaviour
     private const string IntroMoodPrefKey = "xcon.intro.moodIndex";
     private const string AutoLoadPriorityPrefKey = "xcon.save.autoload.priority";
     public const string AutoLoadStatePrefKey = "xcon.save.autoload.state";
-    private static string BestScorePrefKey => Difficulty.BestScorePrefKey(Difficulty.Active);
+    private static string BestScorePrefKey => Difficulty.BestScorePrefKey(Difficulty.Active) + GameModes.KeySuffix(GameModes.Active);
     private const string CommanderNamePrefKey = "xcon.player.commanderName";
     private const string SkipReadyScreenOncePrefKey = "xcon.startup.skipReadyScreenOnce";
 
@@ -84,7 +84,8 @@ public class GameManager : MonoBehaviour
     [SerializeField] private bool pauseGameWhenMissionEnds = true;
     [SerializeField] private bool enableConsecutiveExpireFail = true;
 
-    private static float missionDurationSeconds => Difficulty.ActivePreset.MissionDurationSeconds;
+    // Endurance and Training have no clock: the mission never ends in victory.
+    private static float missionDurationSeconds => GameModes.HasTimeLimit ? Difficulty.ActivePreset.MissionDurationSeconds : float.PositiveInfinity;
     private static int consecutiveExpireFailThreshold => Mathf.Max(1, Difficulty.ActivePreset.ConsecutiveExpireFailThreshold);
 
     [Header("Narrative")]
@@ -120,6 +121,7 @@ public class GameManager : MonoBehaviour
     private ProceduralAudioCuePlayer cuePlayer;
     private UFOManager cachedUfoManager;
     private int bestScore;
+    private int lastHighscorePlace; // Place on the local highscore list for the mission that just ended; 0 = not on it.
     private Text missionHudLabel;
     private GameObject missionHudPanel;
     private bool expireStreakWarningIssued;
@@ -127,6 +129,7 @@ public class GameManager : MonoBehaviour
     private GameObject readyToPlayPanel;
     private Toggle readySkipToggle;
     private Button readyDifficultyButton;
+    private Button readyModeButton;
     private bool skipReadyNextTime;
     private bool startupWelcomePublished;
     private static bool readyScreenShownThisSession;
@@ -198,31 +201,10 @@ public class GameManager : MonoBehaviour
         goldScoreThreshold = Mathf.Max(silverScoreThreshold, goldScoreThreshold);
     }
 
-    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
-    private static void EnsureExists()
-    {
-#if UNITY_EDITOR
-        // In the Editor we ensure existence AfterSceneLoad so the object ends up
-        // in the active scene Hierarchy (and isn't lost during the first load).
-        return;
-#else
-        if (Instance != null)
-        {
-            return;
-        }
-
-        var existing = UnityEngine.Object.FindAnyObjectByType<GameManager>();
-        if (existing != null)
-        {
-            Instance = existing;
-            return;
-        }
-
-        var go = new GameObject(RootName);
-        go.AddComponent<GameManager>();
-#endif
-    }
-
+    // Builds and the Editor start the same way: the scene's GameManager (with its tuned Inspector values)
+    // is used, and a fresh one only gets created after the scene loads if the scene has none.
+    // It is not kept across scene loads: New Game, Load and Play Again reload the scene and rely on a
+    // fresh GameManager running Start() again.
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void EnsureExistsAfterSceneLoad()
     {
@@ -253,12 +235,6 @@ public class GameManager : MonoBehaviour
         if (Instance == null)
         {
             Instance = this;
-
-            // Keep it visible in the active scene while running in the Editor.
-            // In builds, persist across scene loads.
-#if !UNITY_EDITOR
-            DontDestroyOnLoad(gameObject);
-#endif
         }
         else
         {
@@ -273,6 +249,7 @@ public class GameManager : MonoBehaviour
 
         ResetRuntimeSessionState();
         Difficulty.LockForMission();
+        GameModes.LockForMission();
         EnsureMissionConfigIsValid();
 
         // Ensure the research system exists so other systems can call it.
@@ -424,7 +401,7 @@ public class GameManager : MonoBehaviour
         panelRect.anchorMax = new Vector2(0.5f, 0f);
         panelRect.pivot = new Vector2(0.5f, 0f);
         panelRect.anchoredPosition = new Vector2(0f, 30f);
-        panelRect.sizeDelta = new Vector2(680f, 460f);
+        panelRect.sizeDelta = new Vector2(680f, 490f);
 
         var messageBox = new GameObject("ReadyMessageBox", typeof(Image));
         messageBox.transform.SetParent(readyToPlayPanel.transform, false);
@@ -456,22 +433,53 @@ public class GameManager : MonoBehaviour
             readyToPlayPanel.transform,
             "ReadySkipNextTimeToggle",
             "Skip next time",
-            new Vector2(0f, -338f),
+            new Vector2(0f, -384f),
             new Vector2(220f, 28f));
         readySkipToggle.SetIsOnWithoutNotify(false);
         readySkipToggle.onValueChanged.AddListener(OnReadySkipNextTimeChanged);
 
-        readyDifficultyButton = CreatePanelButton(readyToPlayPanel.transform, "ReadyDifficultyButton", BuildDifficultyButtonLabel(), new Vector2(0f, -282f), new Vector2(420f, 44f));
+        readyModeButton = CreatePanelButton(readyToPlayPanel.transform, "ReadyModeButton", BuildModeButtonLabel(), new Vector2(0f, -276f), new Vector2(520f, 44f));
+        readyModeButton.onClick.AddListener(CycleModeOnReadyPanel);
+
+        readyDifficultyButton = CreatePanelButton(readyToPlayPanel.transform, "ReadyDifficultyButton", BuildDifficultyButtonLabel(), new Vector2(0f, -328f), new Vector2(520f, 44f));
         readyDifficultyButton.onClick.AddListener(CycleDifficultyOnReadyPanel);
 
-        var okButton = CreatePanelButton(readyToPlayPanel.transform, "ReadyOkButton", "OK", new Vector2(0f, -396f), new Vector2(180f, 48f));
+        var okButton = CreatePanelButton(readyToPlayPanel.transform, "ReadyOkButton", "OK", new Vector2(0f, -436f), new Vector2(180f, 48f));
         okButton.onClick.AddListener(ConfirmReadyToPlay);
     }
 
     private static string BuildDifficultyButtonLabel()
     {
         var preset = Difficulty.ActivePreset;
-        return $"Difficulty: {preset.Label} ({Mathf.RoundToInt(preset.MissionDurationSeconds / 60f)} min)";
+        return GameModes.HasTimeLimit
+            ? $"Difficulty: {preset.Label} ({Mathf.RoundToInt(preset.MissionDurationSeconds / 60f)} min)"
+            : $"Difficulty: {preset.Label}";
+    }
+
+    private static string BuildModeButtonLabel()
+    {
+        var mode = GameModes.Active;
+        return $"Mode: {GameModes.Label(mode)} ({GameModes.ShortDescription(mode)})";
+    }
+
+    /// <summary>Like difficulty: the mission has not started yet, so the change applies right away.</summary>
+    private void CycleModeOnReadyPanel()
+    {
+        GameModes.SetSelected(GameModes.Next(GameModes.Active));
+        GameModes.LockForMission();
+        bestScore = PlayerPrefs.GetInt(BestScorePrefKey, 0);
+        SetButtonLabel(readyModeButton, BuildModeButtonLabel());
+        SetButtonLabel(readyDifficultyButton, BuildDifficultyButtonLabel());
+        RefreshMissionHud();
+    }
+
+    private static void SetButtonLabel(Button button, string text)
+    {
+        var label = button != null ? button.GetComponentInChildren<Text>() : null;
+        if (label != null)
+        {
+            label.text = text;
+        }
     }
 
     /// <summary>The mission has not started yet on the Get Ready panel, so the change applies right away.</summary>
@@ -951,6 +959,10 @@ public class GameManager : MonoBehaviour
     private static bool TryGetPriorityChoice(out StrategicPriority choice)
     {
         choice = default;
+        if (GameMenuController.IsTypingInTextField)
+        {
+            return false;
+        }
 
 #if ENABLE_INPUT_SYSTEM
         var keyboard = Keyboard.current;
@@ -994,6 +1006,11 @@ public class GameManager : MonoBehaviour
         if (!GameMenuController.IsPaused)
         {
             missionElapsedSeconds += Time.unscaledDeltaTime;
+        }
+
+        if (GameModes.IsTraining)
+        {
+            return;
         }
 
         var ufo = cachedUfoManager != null ? cachedUfoManager : GetComponent<UFOManager>();
@@ -1146,7 +1163,7 @@ public class GameManager : MonoBehaviour
         }
 
         var score = CalculateMissionScore(ufo);
-        var isNewBest = score > bestScore;
+        var isNewBest = !GameModes.IsTraining && score > bestScore;
         if (isNewBest)
         {
             bestScore = score;
@@ -1155,6 +1172,16 @@ public class GameManager : MonoBehaviour
         }
 
         var medalTier = GetMedalTier(score);
+        lastHighscorePlace = GameModes.IsTraining ? 0 : HighscoreTable.Submit(GameModes.Active, Difficulty.Active, new HighscoreTable.Entry
+        {
+            name = commanderName,
+            score = score,
+            medal = medalTier == MedalTier.None ? string.Empty : medalTier.ToString(),
+            victory = reason == MissionEndReason.Victory,
+            seconds = Mathf.FloorToInt(missionElapsedSeconds),
+            dateUtc = DateTime.UtcNow.ToString("o"),
+        });
+
         if (cuePlayer != null)
         {
             if (reason == MissionEndReason.Victory)
@@ -1239,10 +1266,14 @@ public class GameManager : MonoBehaviour
         cachedUfoManager = ufo;
 
         var score = CalculateMissionScore(ufo);
-        var timeRemaining = Mathf.Max(0f, missionDurationSeconds - missionElapsedSeconds);
-        var totalSeconds = Mathf.CeilToInt(timeRemaining);
+        // Mission counts down; Endurance and Training count up.
+        var totalSeconds = GameModes.HasTimeLimit
+            ? Mathf.CeilToInt(Mathf.Max(0f, missionDurationSeconds - missionElapsedSeconds))
+            : Mathf.FloorToInt(missionElapsedSeconds);
         var minutes = totalSeconds / 60;
         var seconds = totalSeconds % 60;
+        var timeLabel = GameModes.HasTimeLimit ? "Time Left" : "Time";
+        var modeTitle = GameModes.Label(GameModes.Active).ToUpperInvariant();
         var medalTier = GetMedalTier(score);
         var nextMedalTarget = medalTier switch
         {
@@ -1255,8 +1286,8 @@ public class GameManager : MonoBehaviour
         if (ufo == null)
         {
             missionHudLabel.text =
-                $"MISSION\n" +
-                $"Time Left: {minutes}:{seconds:00}\n" +
+                $"{modeTitle}\n" +
+                $"{timeLabel}: {minutes}:{seconds:00}\n" +
                 $"Score: {score}  Best: {bestScore}\n" +
                 $"Priority: {currentPriority}\n" +
                 BuildExpireStreakHudText(null);
@@ -1273,8 +1304,9 @@ public class GameManager : MonoBehaviour
             ? $"Next Medal At: {nextMedalTarget}"
             : "Top Medal Reached";
         missionHudLabel.text =
-            $"MISSION{difficultySuffix}{pausedSuffix}{opsSuffix}{archangelSuffix}\n" +
-            $"Time Left: {minutes}:{seconds:00}  Score: {score}\n" +
+            $"{modeTitle}{difficultySuffix}{pausedSuffix}{opsSuffix}{archangelSuffix}\n" +
+            $"{timeLabel}: {minutes}:{seconds:00}  Score: {score}\n" +
+            (GameModes.IsTraining ? "<color=#9FD3FF>Training: no fail, no highscores. U = spawn contact</color>\n" : string.Empty) +
             $"Best: {bestScore}  Medal: {medalText}\n" +
             $"Priority: {currentPriority}  {progressText}\n" +
             $"Contacts: {ufo.TotalContactsSpawned}  Responses: {ufo.RespondedContactsCount}  Missed: {ufo.ExpiredResponsesCount}\n" +
@@ -1587,7 +1619,9 @@ public class GameManager : MonoBehaviour
 
         var headingText = reason == MissionEndReason.Victory
             ? $"Mission Complete, {commanderName}"
-            : $"Mission Failed, {commanderName}";
+            : GameModes.Active == GameMode.Endurance
+                ? $"Endurance Over, {commanderName}"
+                : $"Mission Failed, {commanderName}";
         var heading = CreatePanelLabel(missionEndPanel.transform, "Heading", headingText, 34, new Vector2(0f, -22f));
         heading.alignment = TextAnchor.MiddleCenter;
         heading.rectTransform.sizeDelta = new Vector2(endPanelWidth - 40f, 48f);
@@ -1639,6 +1673,9 @@ public class GameManager : MonoBehaviour
 
         var resultLine = reason == MissionEndReason.Victory
             ? "You held the line until mission timer elapsed."
+            : GameModes.Active == GameMode.Endurance
+                ? $"You held the line for {elapsedMinutes}:{elapsedSecondsPart:00} before " +
+                  (reason == MissionEndReason.ConsecutiveExpireFailure ? "missed responses broke command tempo." : "permit risk shut X-Con down.")
             : reason == MissionEndReason.ConsecutiveExpireFailure
                 ? "Command tempo collapsed from repeated missed responses."
                 : "Permit risk exceeded acceptable limits.";
@@ -1658,8 +1695,13 @@ public class GameManager : MonoBehaviour
         var survivalBonus = Mathf.RoundToInt(Mathf.Min(missionElapsedSeconds, missionDurationSeconds));
 
         var bestSuffix = isNewBest ? " (NEW)" : string.Empty;
+        if (lastHighscorePlace > 0)
+        {
+            bestSuffix += $"\n<color=#FFDB73>Highscore list: #{lastHighscorePlace} on {Difficulty.ActivePreset.Label}</color>";
+        }
+
         var muleLines = BuildMuleBreakdownLines(ufo);
-        return $"{resultLine}\n\nDifficulty: {Difficulty.ActivePreset.Label}  Time: {elapsedMinutes}:{elapsedSecondsPart:00}\nContacts: {ufo.TotalContactsSpawned}  Responses: {ufo.RespondedContactsCount}  Missed: {ufo.ExpiredResponsesCount}\nEducation: {Mathf.RoundToInt(ufo.Education)}  PermitRisk: {Mathf.RoundToInt(ufo.PermitRisk)}\n\nScore Breakdown:\n<color=#8CFF8C>+ Responses: {responsePoints}</color>  <color=#8CFF8C>+ Coverage: {coveragePoints}</color>\n<color=#8CFF8C>+ Education: {educationPoints}</color>  <color=#8CFF8C>+ Survival: {survivalBonus}</color>\n<color=#FF9B9B>- Missed: {missedPenalty}</color>  <color=#FF9B9B>- Risk: {riskPenalty}</color>{muleLines}{BuildDifficultyBreakdownLine()}\n\nScore: {score}\nMedal: {medalText}\nBest: {bestScore}{bestSuffix}";
+        return $"{resultLine}\n\nMode: {GameModes.Label(GameModes.Active)}  Difficulty: {Difficulty.ActivePreset.Label}  Time: {elapsedMinutes}:{elapsedSecondsPart:00}\nContacts: {ufo.TotalContactsSpawned}  Responses: {ufo.RespondedContactsCount}  Missed: {ufo.ExpiredResponsesCount}\nEducation: {Mathf.RoundToInt(ufo.Education)}  PermitRisk: {Mathf.RoundToInt(ufo.PermitRisk)}\n\nScore Breakdown:\n<color=#8CFF8C>+ Responses: {responsePoints}</color>  <color=#8CFF8C>+ Coverage: {coveragePoints}</color>\n<color=#8CFF8C>+ Education: {educationPoints}</color>  <color=#8CFF8C>+ Survival: {survivalBonus}</color>\n<color=#FF9B9B>- Missed: {missedPenalty}</color>  <color=#FF9B9B>- Risk: {riskPenalty}</color>{muleLines}{BuildDifficultyBreakdownLine()}\n\nScore: {score}\nMedal: {medalText}\nBest: {bestScore}{bestSuffix}";
     }
 
     private static Text CreatePanelLabel(Transform parent, string name, string content, int fontSize, Vector2 anchoredPosition)

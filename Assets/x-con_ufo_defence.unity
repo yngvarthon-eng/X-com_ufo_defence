@@ -2090,9 +2090,10 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::UFOManager
   publishUfoSpottedBoxes: 1
   thinkingDelaySeconds: 0.25
-  ufoPrefab: {fileID: 8076927377013852735, guid: 28714324fd0a911dc831c57ee0de9381, type: 3}
-  smugglerUfoPrefab: {fileID: 3872852037961982655, guid: 9cb1b085a5cb13589997f5707e6c67f2, type: 3}
-  useSmugglerPrefabAsDefaultVisual: 1
+  ufoPrefab: {fileID: 4243916447295299396, guid: 998511a5337488128bfbdad0a9eca173, type: 3}
+  smugglerUfoPrefab: {fileID: 0}
+  useSmugglerPrefabAsDefaultVisual: 0
+  alternateBetweenAssignedUfoVisuals: 0
   spawnUfoVisuals: 1
   ufoVisualSpawnYOffset: 0
   autoNormalizeUfoVisualSize: 1
@@ -2130,11 +2131,15 @@ MonoBehaviour:
   educationGainPerIncident: 0.2
   contactOutcomeWeights: []
   quietCargoChanceWhenSmuggler: 0.75
+  enableMuleCargo: 1
+  muleWeightContraband: 0.45
+  muleWeightHeavyMetals: 0.25
+  muleWeightDrugPrecursors: 0.25
+  muleWeightNuclearWarhead: 0.05
   darkSoloChance: 0.2
   darkCrewMin: 2
   darkCrewMax: 3
   enableSoftStart: 1
-  softStartDurationSeconds: 480
   publishPapalWarningOnFirstContact: 1
   papalWarningBody: 'A high-trust warning has been issued: unknown craft activity
     is linked to trafficking, coercion, and hostile influence.
@@ -2162,12 +2167,11 @@ MonoBehaviour:
   currentPriority: 1
   defaultCommanderName: Commander
   alternateIntroMoodEachSession: 1
+  showReadyToPlayScreenOnStart: 1
   enableMissionEndConditions: 1
-  missionDurationSeconds: 1200
   permitRiskFailThreshold: 100
   pauseGameWhenMissionEnds: 1
   enableConsecutiveExpireFail: 1
-  consecutiveExpireFailThreshold: 3
   enableDynamicMoodShiftPosts: 1
   moodShiftPermitRiskThreshold: 65
   moodShiftPermitRiskRecoveryThreshold: 40
@@ -2176,6 +2180,12 @@ MonoBehaviour:
   educationScoreWeight: 12
   missedResponsePenaltyWeight: 90
   permitRiskPenaltyWeight: 9
+  warheadSeizedBonusWeight: 500
+  cargoSpillPenaltyWeight: 120
+  warheadDeliveredPenaltyWeight: 600
+  hazardSiteContainedBonusWeight: 150
+  regionContaminatedPenaltyWeight: 500
+  squadExposurePenaltyWeight: 100
   fallbackTimeScoreMultiplier: 0.8
   bronzeScoreThreshold: 1900
   silverScoreThreshold: 3150

@@ -1,0 +1,21 @@
+# Netlify headers for the Unity WebGL release build (copied in by scripts/webgl_release.sh).
+# Unity pre-compresses the build files with gzip; the browser must be told so, or the game won't load.
+
+/Build/*.wasm.gz
+  Content-Encoding: gzip
+  Content-Type: application/wasm
+
+/Build/*.js.gz
+  Content-Encoding: gzip
+  Content-Type: application/javascript
+
+/Build/*.data.gz
+  Content-Encoding: gzip
+  Content-Type: application/octet-stream
+
+/Build/*.symbols.json.gz
+  Content-Encoding: gzip
+  Content-Type: application/octet-stream
+
+/Build/*.wasm
+  Content-Type: application/wasm

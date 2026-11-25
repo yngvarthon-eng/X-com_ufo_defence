@@ -25,6 +25,9 @@ namespace XCon.UI.Boxes
         public string Title;
         public string Body;
 
+        /// <summary>Unscaled time when the queue accepted the message. Set by <see cref="BoxMessageQueue.Publish"/>.</summary>
+        public float PublishedAt;
+
         public BoxMessage(
             string triggerKey,
             BoxChannel channel,
@@ -39,6 +42,7 @@ namespace XCon.UI.Boxes
             SourceTag = sourceTag;
             Title = title;
             Body = body;
+            PublishedAt = 0f;
         }
 
         public bool IsValid => !string.IsNullOrWhiteSpace(Body);

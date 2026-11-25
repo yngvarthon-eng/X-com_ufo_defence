@@ -707,6 +707,11 @@ public class UFOManager : MonoBehaviour
 
         RefreshResponseChoiceCountdownIfNeeded();
 
+        if (GameMenuController.IsTypingInTextField)
+        {
+            return;
+        }
+
     #if ENABLE_LEGACY_INPUT_MANAGER
         var handled = false;
     #endif
@@ -798,6 +803,7 @@ public class UFOManager : MonoBehaviour
 
         perSecond *= GetPriorityContactRateMultiplier();
         perSecond *= Difficulty.ActivePreset.SpawnRateMultiplier;
+        perSecond *= GameModes.EnduranceSpawnMultiplier(GetMissionElapsedSeconds());
 
         // Pressure: Probe=0, Commit=1, Overreach=2. Summed across active segments.
         var pressure = 0;
@@ -851,8 +857,11 @@ public class UFOManager : MonoBehaviour
             _ => 1.00f,
         };
 
-        return Mathf.Max(1f, responseChoiceTimeoutSeconds * mult * Difficulty.ActivePreset.ResponseTimeoutMultiplier);
+        return Mathf.Max(1f, responseChoiceTimeoutSeconds * mult * Difficulty.ActivePreset.ResponseTimeoutMultiplier
+                             * GameModes.EnduranceTimeoutMultiplier(GetMissionElapsedSeconds()));
     }
+
+    private static float GetMissionElapsedSeconds() => GameManager.Instance != null ? GameManager.Instance.MissionElapsedSeconds : 0f;
 
     private GameManager.StrategicPriority GetCurrentPriority()
     {
@@ -916,12 +925,17 @@ public class UFOManager : MonoBehaviour
 
     private void TryHandleDebugSpawnHotkey()
     {
-        if (!debugEnableSpawnHotkey || !Application.isPlaying)
+        // Training always has the key; elsewhere only editor/dev builds, so players can't farm highscores.
+        if ((!debugEnableSpawnHotkey && !GameModes.IsTraining) || !GameModes.SpawnHotkeyAllowed || !Application.isPlaying)
         {
             return;
         }
 
         var spawnRequested = false;
+        if (GameMenuController.IsTypingInTextField)
+        {
+            return;
+        }
 
 #if ENABLE_INPUT_SYSTEM
         var keyboard = Keyboard.current;
@@ -1121,7 +1135,10 @@ public class UFOManager : MonoBehaviour
         }
 
         // Incident assessments can be critical too; explicitly yield focus to response choice.
+        // Also drop any queued copy, or it would surface later about a contact that is already handled.
         queue.DismissIfCurrent($"ufo/incident/{contactId}");
+        queue.RemoveQueued($"ufo/incident/{contactId}");
+        queue.RemoveQueued($"ufo/spotted/{contactId}");
 
         pendingContactId = contactId;
         pendingContactPosition = position;

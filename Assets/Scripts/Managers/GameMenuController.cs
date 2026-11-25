@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
@@ -36,15 +37,33 @@ public class GameMenuController : MonoBehaviour
         public string squadLoadout;
         public int squadExposures;
         public string difficulty; // Enum name; missing in older saves, which keeps the current choice.
+        public string mode;       // GameMode name; missing in older saves (= Mission).
         public string commanderName;
         public string savedAtUtc;
     }
 
     private GameObject menuPanel;
+    private AboutPanel aboutPanel;
     public static bool IsPaused { get; private set; }
 
     /// <summary>True while the in-game menu panel is shown. Esc then belongs to the menu.</summary>
     public static bool IsMenuOpen { get; private set; }
+
+    /// <summary>True while the player is typing in a text box. Game hotkeys must ignore keys then.</summary>
+    public static bool IsTypingInTextField
+    {
+        get
+        {
+            var selected = EventSystem.current != null ? EventSystem.current.currentSelectedGameObject : null;
+            if (selected == null)
+            {
+                return false;
+            }
+
+            var input = selected.GetComponent<InputField>();
+            return input != null && input.isFocused;
+        }
+    }
     public static event Action<bool> PauseStateChanged;
 
     private bool menuForcedPause;
@@ -60,6 +79,7 @@ public class GameMenuController : MonoBehaviour
     private Text ufoSpawnRateValueLabel;
     private Button mapStyleButton;
     private Button difficultyButton;
+    private Button modeButton;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     private static void ResetPauseStateOnSubsystemRegistration()
@@ -90,6 +110,13 @@ public class GameMenuController : MonoBehaviour
     {
         if (!IsEscapePressedThisFrame())
         {
+            return;
+        }
+
+        // Esc closes the About window first and leaves the menu open behind it.
+        if (aboutPanel != null && aboutPanel.IsOpen)
+        {
+            aboutPanel.Close();
             return;
         }
 
@@ -149,6 +176,7 @@ public class GameMenuController : MonoBehaviour
 
         commanderNameInput = CreateInputField(menuPanel.transform, "CommanderNameInput", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -52f), new Vector2(260f, 36f), "Enter commander name");
         SyncCommanderInputFromState();
+        commanderNameInput.onEndEdit.AddListener(_ => ApplyCommanderNameIfChanged());
 
         var applyNameButton = CreateButton(menuPanel.transform, "ApplyCommanderNameButton", "Apply Name", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -94f), new Vector2(260f, 36f));
         applyNameButton.onClick.AddListener(ApplyCommanderNameFromInput);
@@ -182,19 +210,36 @@ public class GameMenuController : MonoBehaviour
         difficultyButton.onClick.AddListener(OnDifficultyButtonClicked);
         UpdateDifficultyButtonLabel();
 
-        var newGameButton = CreateButton(menuPanel.transform, "NewGameButton", "New Game", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -346f), new Vector2(260f, 40f));
+        modeButton = CreateButton(menuPanel.transform, "ModeMenuButton", "Mode: Mission", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -346f), new Vector2(260f, 36f));
+        modeButton.onClick.AddListener(OnModeButtonClicked);
+        UpdateModeButtonLabel();
+
+        var newGameButton = CreateButton(menuPanel.transform, "NewGameButton", "New Game", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -386f), new Vector2(260f, 40f));
         newGameButton.onClick.AddListener(NewGame);
 
-        var loadButton = CreateButton(menuPanel.transform, "LoadButton", "Load", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -392f), new Vector2(260f, 40f));
+        var loadButton = CreateButton(menuPanel.transform, "LoadButton", "Load", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -432f), new Vector2(260f, 40f));
         loadButton.onClick.AddListener(LoadGame);
 
-        var saveButton = CreateButton(menuPanel.transform, "SaveButton", "Save", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -438f), new Vector2(260f, 40f));
+        var saveButton = CreateButton(menuPanel.transform, "SaveButton", "Save", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -478f), new Vector2(260f, 40f));
         saveButton.onClick.AddListener(SaveGame);
 
-        var quitButton = CreateButton(menuPanel.transform, "QuitButton", "Quit", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -484f), new Vector2(260f, 40f));
+        var highscoresButton = CreateButton(menuPanel.transform, "HighscoresButton", "Highscores", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -524f), new Vector2(260f, 40f));
+        highscoresButton.onClick.AddListener(() => aboutPanel?.OpenHighscores());
+
+        var aboutButton = CreateButton(menuPanel.transform, "AboutButton", "About & How to Play", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -570f), new Vector2(260f, 40f));
+        aboutButton.onClick.AddListener(() => aboutPanel?.Open());
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        // A browser tab cannot be closed from the game: Application.Quit only freezes the player.
+        menuPanelRect.sizeDelta = new Vector2(320f, 636f);
+#else
+        menuPanelRect.sizeDelta = new Vector2(320f, 682f);
+        var quitButton = CreateButton(menuPanel.transform, "QuitButton", "Quit", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -616f), new Vector2(260f, 40f));
         quitButton.onClick.AddListener(QuitGame);
+#endif
 
         menuPanel.SetActive(false);
+        aboutPanel = AboutPanel.Create(canvasGo.transform);
     }
 
     private static Button CreateButton(Transform parent, string objectName, string label, Vector2 anchorMin, Vector2 anchorMax, Vector2 anchoredPosition, Vector2 size)
@@ -416,6 +461,7 @@ public class GameMenuController : MonoBehaviour
             squadLoadout = SquadManager.Instance != null ? SquadManager.Instance.Loadout.ToString() : string.Empty,
             squadExposures = SquadManager.Instance != null ? SquadManager.Instance.Exposures : 0,
             difficulty = Difficulty.Active.ToString(),
+            mode = GameModes.Active.ToString(),
             commanderName = manager != null ? manager.CommanderName : string.Empty,
             savedAtUtc = DateTime.UtcNow.ToString("O")
         };
@@ -452,6 +498,8 @@ public class GameMenuController : MonoBehaviour
             Difficulty.SetSelected(savedDifficulty);
         }
 
+        GameModes.SetSelected(Enum.TryParse<GameMode>(data.mode, out var savedMode) ? savedMode : GameMode.Mission);
+
         PlayerPrefs.SetInt(AutoLoadPriorityPrefKey, data.priority);
         PlayerPrefs.SetInt(MapStylePrefKey, data.mapStyleIndex);
 
@@ -487,6 +535,9 @@ public class GameMenuController : MonoBehaviour
 
     private void NewGame()
     {
+        // A typed but not yet applied name should still count for the new game.
+        ApplyCommanderNameIfChanged();
+
         PlayerPrefs.DeleteKey(SaveSlotKey);
         PlayerPrefs.DeleteKey(AutoLoadPriorityPrefKey);
         PlayerPrefs.DeleteKey(MapStylePrefKey);
@@ -523,12 +574,17 @@ public class GameMenuController : MonoBehaviour
 
         menuPanel.SetActive(visible);
         IsMenuOpen = visible;
+        if (!visible)
+        {
+            aboutPanel?.Close();
+        }
 
         if (visible)
         {
             SyncCommanderInputFromState();
             SyncAudioControlsFromState();
             UpdateDifficultyButtonLabel();
+            UpdateModeButtonLabel();
             menuForcedPause = !IsPaused;
             if (menuForcedPause)
             {
@@ -638,6 +694,12 @@ public class GameMenuController : MonoBehaviour
             return;
         }
 
+        // Clicks in the About window belong to it, not to "click outside the menu".
+        if (aboutPanel != null && aboutPanel.IsOpen)
+        {
+            return;
+        }
+
         if (!TryGetPointerPressedScreenPosition(out var screenPosition))
         {
             return;
@@ -717,6 +779,21 @@ public class GameMenuController : MonoBehaviour
 
         var manager = GameManager.Instance != null ? GameManager.Instance : UnityEngine.Object.FindAnyObjectByType<GameManager>();
         commanderNameInput.SetTextWithoutNotify(manager != null ? manager.CommanderName : string.Empty);
+    }
+
+    private void ApplyCommanderNameIfChanged()
+    {
+        var manager = GameManager.Instance != null ? GameManager.Instance : UnityEngine.Object.FindAnyObjectByType<GameManager>();
+        if (manager == null || commanderNameInput == null)
+        {
+            return;
+        }
+
+        var typed = commanderNameInput.text.Trim();
+        if (typed.Length > 0 && typed != manager.CommanderName)
+        {
+            ApplyCommanderNameFromInput();
+        }
     }
 
     private void ApplyCommanderNameFromInput()
@@ -828,6 +905,29 @@ public class GameMenuController : MonoBehaviour
         {
             ShowStatusToast($"{Difficulty.For(Difficulty.Selected).Label} applies from New Game");
         }
+    }
+
+    private void OnModeButtonClicked()
+    {
+        GameModes.SetSelected(GameModes.Next(GameModes.Selected));
+        UpdateModeButtonLabel();
+
+        if (GameModes.Selected != GameModes.Active)
+        {
+            ShowStatusToast($"{GameModes.Label(GameModes.Selected)} applies from New Game");
+        }
+    }
+
+    private void UpdateModeButtonLabel()
+    {
+        var text = modeButton != null ? modeButton.GetComponentInChildren<Text>() : null;
+        if (text == null)
+        {
+            return;
+        }
+
+        var label = GameModes.Label(GameModes.Selected);
+        text.text = GameModes.Selected == GameModes.Active ? $"Mode: {label}" : $"Mode: {label} (next)";
     }
 
     private void UpdateDifficultyButtonLabel()

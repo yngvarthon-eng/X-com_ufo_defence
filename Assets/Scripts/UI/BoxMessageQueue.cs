@@ -120,6 +120,18 @@ namespace XCon.UI.Boxes
             StateChanged?.Invoke();
         }
 
+        /// <summary>
+        /// Let the next Publish with this key through even if the same key was published moments
+        /// ago. For boxes that report a player's latest choice, where the repeat is new information.
+        /// </summary>
+        public void ForgetRecentPublish(string triggerKey)
+        {
+            if (!string.IsNullOrWhiteSpace(triggerKey))
+            {
+                lastPublishedAtByKey.Remove(triggerKey);
+            }
+        }
+
         public void DismissCurrent()
         {
             if (!current.HasValue)

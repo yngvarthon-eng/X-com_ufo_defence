@@ -846,7 +846,7 @@ public class GameManager : MonoBehaviour
                     $"The sky is speaking again, Commander {commanderName}.\n" +
                     "Signals hide intent; your choices reveal it.\n\n" +
                     "Core controls:\n" +
-                    "1-3: Strategic Priority (Coverage / Research / Response)\n" +
+                    "Q W E: Strategic Priority (Coverage / Research / Response)\n" +
                     "1-4: Contact Response (Ignore / Track / Intercept / Dispatch)\n" +
                     "H: Send the hazmat team to the oldest hazard site (left when a Mule spills cargo)\n" +
                     "L: Change the squad kit used by Dispatch (Standard / Hazmat / Heavy / Recon)\n" +
@@ -862,7 +862,7 @@ public class GameManager : MonoBehaviour
                 $"Welcome to X-Con U.F.O Defence, Commander {commanderName}.\n" +
                 "Your mission is to detect contacts, assess incidents, and choose the right response before threats escalate.\n\n" +
                 "Core controls:\n" +
-                "1-3: Strategic Priority (Coverage / Research / Response)\n" +
+                "Q W E: Strategic Priority (Coverage / Research / Response)\n" +
                 "1-4: Contact Response (Ignore / Track / Intercept / Dispatch)\n" +
                 "H: Send the hazmat team to the oldest hazard site (left when a Mule spills cargo)\n" +
                 "L: Change the squad kit used by Dispatch (Standard / Hazmat / Heavy / Recon)\n" +
@@ -936,7 +936,7 @@ public class GameManager : MonoBehaviour
             return;
         }
 
-        var body = $"Strategic Priority (press 1-3 anytime):\n1) Coverage\n2) Research\n3) Response\n\nCurrent: {choice}\n\nTip: Use 1-4 on active contact prompts to choose response.";
+        var body = BuildPriorityPromptBody(choice);
 
         var queue = BoxMessageQueue.Instance;
         if (queue == null)
@@ -944,7 +944,14 @@ public class GameManager : MonoBehaviour
             return;
         }
 
-        // Ensure feedback appears even if another message was active.
+        // If the priority box is still showing or queued, update it in place. Otherwise show it
+        // again, even if it was shown a moment ago (the queue normally drops repeats within seconds).
+        if (queue.UpdateBody(PickPriorityTriggerKey, body) > 0)
+        {
+            return;
+        }
+
+        queue.ForgetRecentPublish(PickPriorityTriggerKey);
         queue.Publish(new BoxMessage(
             triggerKey: PickPriorityTriggerKey,
             channel: BoxChannel.Thinking,
@@ -952,8 +959,17 @@ public class GameManager : MonoBehaviour
             sourceTag: "Commander",
             title: "Strategic Priority Updated",
             body: body));
+    }
 
-        queue.UpdateBody(PickPriorityTriggerKey, body);
+    /// <summary>Text for the Strategic Priority box, always naming the priority in effect.</summary>
+    public static string BuildPriorityPromptBody(StrategicPriority current)
+    {
+        return $"Strategic Priority (press anytime):\nQ) Coverage\nW) Research\nE) Response\n\nCurrent: {current}\n\nTip: Use 1-4 on active contact prompts to choose response.";
+    }
+
+    public static string BuildPriorityPromptBody()
+    {
+        return BuildPriorityPromptBody(Instance != null ? Instance.CurrentPriority : StrategicPriority.Coverage);
     }
 
     private static bool TryGetPriorityChoice(out StrategicPriority choice)
@@ -968,11 +984,8 @@ public class GameManager : MonoBehaviour
         var keyboard = Keyboard.current;
         if (keyboard != null)
         {
-            if (keyboard.digit1Key.wasPressedThisFrame || keyboard.numpad1Key.wasPressedThisFrame) { choice = StrategicPriority.Coverage; return true; }
-            if (keyboard.digit2Key.wasPressedThisFrame || keyboard.numpad2Key.wasPressedThisFrame) { choice = StrategicPriority.Research; return true; }
-            if (keyboard.digit3Key.wasPressedThisFrame || keyboard.numpad3Key.wasPressedThisFrame) { choice = StrategicPriority.Response; return true; }
 
-            // Extra fallbacks that do not collide with debug F1/F2/F3 box hotkeys.
+            // Q/W/E only: 1-4 belong to contact responses, so they must not also change the priority.
             if (keyboard.qKey.wasPressedThisFrame) { choice = StrategicPriority.Coverage; return true; }
             if (keyboard.wKey.wasPressedThisFrame) { choice = StrategicPriority.Research; return true; }
             if (keyboard.eKey.wasPressedThisFrame) { choice = StrategicPriority.Response; return true; }
@@ -980,9 +993,6 @@ public class GameManager : MonoBehaviour
 #endif
 
 #if ENABLE_LEGACY_INPUT_MANAGER
-        if (Input.GetKeyDown(KeyCode.Alpha1) || Input.GetKeyDown(KeyCode.Keypad1)) { choice = StrategicPriority.Coverage; return true; }
-        if (Input.GetKeyDown(KeyCode.Alpha2) || Input.GetKeyDown(KeyCode.Keypad2)) { choice = StrategicPriority.Research; return true; }
-        if (Input.GetKeyDown(KeyCode.Alpha3) || Input.GetKeyDown(KeyCode.Keypad3)) { choice = StrategicPriority.Response; return true; }
         if (Input.GetKeyDown(KeyCode.Q)) { choice = StrategicPriority.Coverage; return true; }
         if (Input.GetKeyDown(KeyCode.W)) { choice = StrategicPriority.Research; return true; }
         if (Input.GetKeyDown(KeyCode.E)) { choice = StrategicPriority.Response; return true; }

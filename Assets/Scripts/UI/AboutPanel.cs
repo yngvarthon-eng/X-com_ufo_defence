@@ -441,6 +441,7 @@ public static class AboutContent
         "<b>H</b>   Send the hazmat team to the oldest hazard site\n" +
         "<b>L</b>   Change the squad kit (Standard / Hazmat / Heavy / Recon)\n" +
         "<b>Esc</b>   Close the current message; press again for the menu\n" +
+        "<b>Menu  Leave Fullscreen</b>   Exit fullscreen in the browser (or hold Esc)\n" +
         "<b>U</b>   Call in a contact (Training only)\n\n" +
         $"{Head}Score and medals{HeadEnd}\n" +
         "You score for answered contacts, coverage, Education and every second you survive. " +

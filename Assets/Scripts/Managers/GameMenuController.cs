@@ -80,6 +80,8 @@ public class GameMenuController : MonoBehaviour
     private Button mapStyleButton;
     private Button difficultyButton;
     private Button modeButton;
+    private Button fullscreenButton;
+    private bool lastKnownFullscreen;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     private static void ResetPauseStateOnSubsystemRegistration()
@@ -98,6 +100,11 @@ public class GameMenuController : MonoBehaviour
 
     private void Update()
     {
+        if (fullscreenButton != null && Screen.fullScreen != lastKnownFullscreen)
+        {
+            UpdateFullscreenButtonLabel();
+        }
+
         if (!IsEscapePressedThisFrame())
         {
             TryCloseMenuFromOutsidePointerPress();
@@ -231,7 +238,12 @@ public class GameMenuController : MonoBehaviour
 
 #if UNITY_WEBGL && !UNITY_EDITOR
         // A browser tab cannot be closed from the game: Application.Quit only freezes the player.
-        menuPanelRect.sizeDelta = new Vector2(320f, 636f);
+        // Its slot holds a fullscreen toggle instead: in fullscreen, Esc goes to the game
+        // (see FullscreenEscapeLock), so the player needs another way out.
+        menuPanelRect.sizeDelta = new Vector2(320f, 682f);
+        fullscreenButton = CreateButton(menuPanel.transform, "FullscreenButton", "Fullscreen", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -616f), new Vector2(260f, 40f));
+        fullscreenButton.onClick.AddListener(OnFullscreenButtonClicked);
+        UpdateFullscreenButtonLabel();
 #else
         menuPanelRect.sizeDelta = new Vector2(320f, 682f);
         var quitButton = CreateButton(menuPanel.transform, "QuitButton", "Quit", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -616f), new Vector2(260f, 40f));
@@ -915,6 +927,23 @@ public class GameMenuController : MonoBehaviour
         if (GameModes.Selected != GameModes.Active)
         {
             ShowStatusToast($"{GameModes.Label(GameModes.Selected)} applies from New Game");
+        }
+    }
+
+    private void OnFullscreenButtonClicked()
+    {
+        // The browser only allows entering fullscreen from a click; Unity sends the request
+        // with the click's input event. Leaving fullscreen is always allowed.
+        Screen.fullScreen = !Screen.fullScreen;
+    }
+
+    private void UpdateFullscreenButtonLabel()
+    {
+        lastKnownFullscreen = Screen.fullScreen;
+        var text = fullscreenButton != null ? fullscreenButton.GetComponentInChildren<Text>() : null;
+        if (text != null)
+        {
+            text.text = lastKnownFullscreen ? "Leave Fullscreen" : "Fullscreen";
         }
     }
 

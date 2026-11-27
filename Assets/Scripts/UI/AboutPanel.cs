@@ -405,7 +405,7 @@ public static class AboutContent
         "You are their Commander. Watch the map, read the reports, and decide how X-Con answers " +
         "each contact. The public, the permit office and your own crew are all watching.\n\n" +
         $"{Head}This demo{HeadEnd}\n" +
-        "Three ways to play, chosen on the Get Ready screen or in the menu:\n" +
+        "Three ways to play, chosen on the welcome screen or in the menu:\n" +
         "<b>Mission</b>  —  hold the line until the clock runs out. 15 minutes on Normal and Hard, " +
         "20 minutes on Easy (longer, but slower and more forgiving).\n" +
         "<b>Endurance</b>  —  no clock. Contacts come faster and faster. How long can you last?\n" +

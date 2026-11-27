@@ -148,6 +148,13 @@ public class SquadManager : MonoBehaviour
         Debug.Log($"Squad ({SquadLoadoutRules.Label(Loadout)}) deployed to {position}");
     }
 
+    /// <summary>Kit chosen on the welcome screen: applied at once, no refit time.</summary>
+    public void SetLoadoutBeforeMission(SquadLoadout loadout)
+    {
+        Loadout = loadout;
+        refitting = false;
+    }
+
     /// <summary>Restore from a save. An unfinished refit is dropped.</summary>
     public void ApplyPersistentState(string loadout, int exposures)
     {

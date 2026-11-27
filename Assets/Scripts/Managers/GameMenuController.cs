@@ -44,6 +44,29 @@ public class GameMenuController : MonoBehaviour
 
     private GameObject menuPanel;
     private AboutPanel aboutPanel;
+    private static GameMenuController instance;
+
+    public static bool IsAboutOpen => instance != null && instance.aboutPanel != null && instance.aboutPanel.IsOpen;
+
+    /// <summary>Opens How to Play (or Highscores) without the menu, e.g. from the welcome screen.</summary>
+    public static bool OpenAboutWindow(bool highscores)
+    {
+        if (instance == null || instance.aboutPanel == null)
+        {
+            return false;
+        }
+
+        if (highscores)
+        {
+            instance.aboutPanel.OpenHighscores();
+        }
+        else
+        {
+            instance.aboutPanel.Open();
+        }
+
+        return true;
+    }
     public static bool IsPaused { get; private set; }
 
     /// <summary>True while the in-game menu panel is shown. Esc then belongs to the menu.</summary>
@@ -95,6 +118,7 @@ public class GameMenuController : MonoBehaviour
 
     private void Start()
     {
+        instance = this;
         BuildMenuUI();
     }
 
@@ -139,6 +163,10 @@ public class GameMenuController : MonoBehaviour
     private void OnDestroy()
     {
         IsMenuOpen = false; // e.g. Play Again reloads the scene while the menu is open.
+        if (instance == this)
+        {
+            instance = null;
+        }
 
         if (statusToastCoroutine != null)
         {
@@ -313,7 +341,7 @@ public class GameMenuController : MonoBehaviour
         return label;
     }
 
-    private static InputField CreateInputField(Transform parent, string objectName, Vector2 anchorMin, Vector2 anchorMax, Vector2 anchoredPosition, Vector2 size, string placeholderText)
+    public static InputField CreateInputField(Transform parent, string objectName, Vector2 anchorMin, Vector2 anchorMax, Vector2 anchoredPosition, Vector2 size, string placeholderText)
     {
         var go = new GameObject(objectName, typeof(Image), typeof(InputField));
         go.transform.SetParent(parent, false);
@@ -440,6 +468,13 @@ public class GameMenuController : MonoBehaviour
             return;
         }
 
+        // On the welcome screen the menu would open behind the panel, so the panel steps aside
+        // until the menu closes again.
+        if (GameManager.IsWelcomeOpen && !menuPanel.activeSelf && GameManager.Instance != null)
+        {
+            GameManager.Instance.HideWelcomeForOverlay();
+        }
+
         SetMenuVisible(!menuPanel.activeSelf);
     }
 
@@ -549,6 +584,7 @@ public class GameMenuController : MonoBehaviour
     {
         // A typed but not yet applied name should still count for the new game.
         ApplyCommanderNameIfChanged();
+        GameManager.RequestWelcomeOnNextStart();
 
         PlayerPrefs.DeleteKey(SaveSlotKey);
         PlayerPrefs.DeleteKey(AutoLoadPriorityPrefKey);
@@ -597,6 +633,7 @@ public class GameMenuController : MonoBehaviour
             SyncAudioControlsFromState();
             UpdateDifficultyButtonLabel();
             UpdateModeButtonLabel();
+            SyncMapStyleControlFromState();
             menuForcedPause = !IsPaused;
             if (menuForcedPause)
             {
@@ -993,20 +1030,38 @@ public class GameMenuController : MonoBehaviour
 
     private void OnMapStyleButtonClicked()
     {
+        UpdateMapStyleButtonLabel(CycleMapStyle());
+    }
+
+    public static int CurrentMapStyleIndex()
+    {
         var manager = UnityEngine.Object.FindAnyObjectByType<WorldMapBackgroundManager>();
-        var current = manager != null ? manager.CurrentMapStyleIndex : PlayerPrefs.GetInt(MapStylePrefKey, 0);
-        var next = (current + 1) % 3;
+        return manager != null ? manager.CurrentMapStyleIndex : PlayerPrefs.GetInt(MapStylePrefKey, 0);
+    }
+
+    /// <summary>Switch to the next map style and return its index.</summary>
+    public static int CycleMapStyle()
+    {
+        var next = (CurrentMapStyleIndex() + 1) % 3;
 
         PlayerPrefs.SetInt(MapStylePrefKey, next);
         PlayerPrefs.Save();
 
+        var manager = UnityEngine.Object.FindAnyObjectByType<WorldMapBackgroundManager>();
         if (manager != null)
         {
             manager.ApplyMapStyleIndex(next, persist: true, immediate: false);
         }
 
-        UpdateMapStyleButtonLabel(next);
+        return next;
     }
+
+    public static string MapStyleLabel(int index) => index switch
+    {
+        1 => "Flat Oval",
+        2 => "Flat",
+        _ => "Round Sphere",
+    };
 
     private void UpdateMapStyleButtonLabel(int index)
     {
@@ -1015,12 +1070,7 @@ public class GameMenuController : MonoBehaviour
             return;
         }
 
-        var label = index switch
-        {
-            1 => "Flat Oval",
-            2 => "Flat",
-            _ => "Round Sphere",
-        };
+        var label = MapStyleLabel(index);
 
         var text = mapStyleButton.GetComponentInChildren<Text>();
         if (text != null)

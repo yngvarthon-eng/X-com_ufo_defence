@@ -41,7 +41,10 @@ public class GameManager : MonoBehaviour
     public const string AutoLoadStatePrefKey = "xcon.save.autoload.state";
     private static string BestScorePrefKey => Difficulty.BestScorePrefKey(Difficulty.Active) + GameModes.KeySuffix(GameModes.Active);
     private const string CommanderNamePrefKey = "xcon.player.commanderName";
-    private const string SkipReadyScreenOncePrefKey = "xcon.startup.skipReadyScreenOnce";
+    private const string SkipReadyScreenOncePrefKey = "xcon.startup.skipReadyScreenOnce"; // Old one-shot skip; cleared on start.
+    private const string SkipWelcomeOnPlayAgainPrefKey = "xcon.startup.skipWelcomeOnPlayAgain";
+    private const string StartKitPrefKey = "xcon.startup.kit";
+    private const string StartFocusPrefKey = "xcon.startup.focus";
 
     [Header("Player")]
     [SerializeField] private string defaultCommanderName = "Commander";
@@ -130,7 +133,20 @@ public class GameManager : MonoBehaviour
     private Toggle readySkipToggle;
     private Button readyDifficultyButton;
     private Button readyModeButton;
-    private bool skipReadyNextTime;
+    private InputField welcomeNameInput;
+    private Button welcomeKitButton;
+    private Button welcomeFocusButton;
+    private Button welcomeMapButton;
+    private Text welcomeInfoLabel;
+    private SquadLoadout welcomeKit = SquadLoadout.Standard;
+    private bool welcomeHiddenForAbout;
+    private static bool welcomeRequestedByNewGame;
+
+    /// <summary>True while the welcome panel is up; other UI leaves Esc and the menu alone then.</summary>
+    public static bool IsWelcomeOpen { get; private set; }
+
+    /// <summary>The menu's New Game always shows the welcome screen, even when Play Again skips it.</summary>
+    public static void RequestWelcomeOnNextStart() => welcomeRequestedByNewGame = true;
     private bool startupWelcomePublished;
     private static bool readyScreenShownThisSession;
 
@@ -228,6 +244,8 @@ public class GameManager : MonoBehaviour
     private static void ResetSessionStatics()
     {
         readyScreenShownThisSession = false;
+        welcomeRequestedByNewGame = false;
+        IsWelcomeOpen = false;
     }
 
     void Awake()
@@ -300,18 +318,26 @@ public class GameManager : MonoBehaviour
         cuePlayer = GetComponent<ProceduralAudioCuePlayer>();
 
         bestScore = PlayerPrefs.GetInt(BestScorePrefKey, 0);
-        TryApplyAutoLoadedState();
+        var loadedSave = TryApplyAutoLoadedState();
+        if (!loadedSave)
+        {
+            ApplyRememberedStartChoices();
+        }
+
         BuildMissionHud();
         RefreshMissionHud();
 
-        var skipReadyScreenOnce = PlayerPrefs.GetInt(SkipReadyScreenOncePrefKey, 0) == 1;
-        if (skipReadyScreenOnce)
-        {
-            PlayerPrefs.DeleteKey(SkipReadyScreenOncePrefKey);
-            PlayerPrefs.Save();
-        }
+        PlayerPrefs.DeleteKey(SkipReadyScreenOncePrefKey);
 
-        if (showReadyToPlayScreenOnStart && !readyScreenShownThisSession && !skipReadyScreenOnce)
+        // Every new game opens on the welcome screen. A loaded save keeps its own choices and goes
+        // straight in; Play Again skips it only if the player ticked the box.
+        var requestedByNewGame = welcomeRequestedByNewGame;
+        welcomeRequestedByNewGame = false;
+        var skipOnPlayAgain = PlayerPrefs.GetInt(SkipWelcomeOnPlayAgainPrefKey, 0) == 1;
+        var showWelcome = showReadyToPlayScreenOnStart && !loadedSave
+            && (requestedByNewGame || !readyScreenShownThisSession || !skipOnPlayAgain);
+
+        if (showWelcome)
         {
             ShowReadyToPlayPanel();
             return;
@@ -345,7 +371,13 @@ public class GameManager : MonoBehaviour
         readyToPlayPanel = null;
         readySkipToggle = null;
         readyDifficultyButton = null;
-        skipReadyNextTime = false;
+        welcomeNameInput = null;
+        welcomeKitButton = null;
+        welcomeFocusButton = null;
+        welcomeMapButton = null;
+        welcomeInfoLabel = null;
+        welcomeHiddenForAbout = false;
+        IsWelcomeOpen = false;
     }
 
     private void BeginOperationalStart()
@@ -369,6 +401,7 @@ public class GameManager : MonoBehaviour
         }
 
         readyScreenShownThisSession = true;
+        IsWelcomeOpen = true;
         GameMenuController.SetPaused(true);
 
         if (missionHudPanel != null)
@@ -396,120 +429,265 @@ public class GameManager : MonoBehaviour
         panelImage.color = new Color(0f, 0f, 0f, 0.9f);
 
         var panelRect = readyToPlayPanel.GetComponent<RectTransform>();
-        // Sit in the bottom half so it doesn't cover the top-of-screen boxes.
+        // A panel over the bottom of the map, so the world stays visible behind it.
         panelRect.anchorMin = new Vector2(0.5f, 0f);
         panelRect.anchorMax = new Vector2(0.5f, 0f);
         panelRect.pivot = new Vector2(0.5f, 0f);
         panelRect.anchoredPosition = new Vector2(0f, 30f);
-        panelRect.sizeDelta = new Vector2(680f, 490f);
+        panelRect.sizeDelta = new Vector2(720f, 610f);
 
-        var messageBox = new GameObject("ReadyMessageBox", typeof(Image));
-        messageBox.transform.SetParent(readyToPlayPanel.transform, false);
-        var messageBoxImage = messageBox.GetComponent<Image>();
-        messageBoxImage.color = new Color(0.06f, 0.06f, 0.06f, 0.82f);
-        var messageBoxRect = messageBox.GetComponent<RectTransform>();
-        messageBoxRect.anchorMin = new Vector2(0.5f, 1f);
-        messageBoxRect.anchorMax = new Vector2(0.5f, 1f);
-        messageBoxRect.pivot = new Vector2(0.5f, 1f);
-        messageBoxRect.anchoredPosition = new Vector2(0f, -22f);
-        messageBoxRect.sizeDelta = new Vector2(620f, 220f);
+        var parent = readyToPlayPanel.transform;
 
-        var title = CreatePanelLabel(messageBox.transform, "ReadyTitle", "Get Ready To Play", 36, new Vector2(0f, -16f));
+        var title = CreatePanelLabel(parent, "WelcomeTitle", "X-CON  U.F.O  DEFENCE", 36, new Vector2(0f, -18f));
         title.alignment = TextAnchor.MiddleCenter;
-        // Default label rect is 220 tall; centred text in it landed on top of the body below.
-        title.rectTransform.sizeDelta = new Vector2(560f, 48f);
+        title.rectTransform.sizeDelta = new Vector2(640f, 48f);
 
-        var body = CreatePanelLabel(
-            messageBox.transform,
-            "ReadyBody",
-            "You are about to enter command operations.\nReview the board, then press OK to begin.\n\n" +
-            "Keys: 1-4 respond  |  L squad kit  |  H hazmat team  |  Esc menu",
-            20,
-            new Vector2(0f, -76f));
-        body.alignment = TextAnchor.UpperCenter;
-        body.rectTransform.sizeDelta = new Vector2(560f, 120f);
+        var subtitle = CreatePanelLabel(parent, "WelcomeSubtitle", "Set up your command, then press Start.", 18, new Vector2(0f, -66f));
+        subtitle.alignment = TextAnchor.MiddleCenter;
+        subtitle.color = new Color(0.8f, 0.8f, 0.8f, 1f);
+        subtitle.rectTransform.sizeDelta = new Vector2(640f, 26f);
 
-        readySkipToggle = CreatePanelToggle(
-            readyToPlayPanel.transform,
-            "ReadySkipNextTimeToggle",
-            "Skip next time",
-            new Vector2(0f, -384f),
-            new Vector2(220f, 28f));
-        readySkipToggle.SetIsOnWithoutNotify(false);
+        const float firstRowY = -108f;
+        const float rowStep = 50f;
+
+        CreateWelcomeRowLabel(parent, "Commander name", firstRowY);
+        welcomeNameInput = GameMenuController.CreateInputField(
+            parent, "WelcomeNameInput", new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
+            new Vector2(WelcomeControlX, firstRowY - 20f), new Vector2(WelcomeControlWidth, 40f), "Enter commander name");
+        welcomeNameInput.characterLimit = 24;
+        welcomeNameInput.SetTextWithoutNotify(commanderName);
+
+        CreateWelcomeRowLabel(parent, "Mode", firstRowY - rowStep);
+        readyModeButton = CreateWelcomeRowButton(parent, "WelcomeModeButton", firstRowY - rowStep, CycleModeOnReadyPanel);
+
+        CreateWelcomeRowLabel(parent, "Difficulty", firstRowY - rowStep * 2f);
+        readyDifficultyButton = CreateWelcomeRowButton(parent, "WelcomeDifficultyButton", firstRowY - rowStep * 2f, CycleDifficultyOnReadyPanel);
+
+        CreateWelcomeRowLabel(parent, "Squad kit", firstRowY - rowStep * 3f);
+        welcomeKitButton = CreateWelcomeRowButton(parent, "WelcomeKitButton", firstRowY - rowStep * 3f, CycleKitOnReadyPanel);
+
+        CreateWelcomeRowLabel(parent, "Starting focus", firstRowY - rowStep * 4f);
+        welcomeFocusButton = CreateWelcomeRowButton(parent, "WelcomeFocusButton", firstRowY - rowStep * 4f, CycleFocusOnReadyPanel);
+
+        CreateWelcomeRowLabel(parent, "Map style", firstRowY - rowStep * 5f);
+        welcomeMapButton = CreateWelcomeRowButton(parent, "WelcomeMapButton", firstRowY - rowStep * 5f, CycleMapOnReadyPanel);
+
+        // Explains whichever choice was changed last, so each option says what it does.
+        welcomeInfoLabel = CreatePanelLabel(parent, "WelcomeInfo", string.Empty, 17, new Vector2(0f, -410f));
+        welcomeInfoLabel.alignment = TextAnchor.MiddleCenter;
+        welcomeInfoLabel.color = new Color(0.55f, 0.9f, 1f, 1f);
+        welcomeInfoLabel.rectTransform.sizeDelta = new Vector2(660f, 44f);
+
+        var keys = CreatePanelLabel(parent, "WelcomeKeys",
+            "In game:  1-4 respond  ·  Q W E priority  ·  L squad kit  ·  H hazmat  ·  Esc menu", 16, new Vector2(0f, -458f));
+        keys.alignment = TextAnchor.MiddleCenter;
+        keys.color = new Color(0.8f, 0.8f, 0.8f, 1f);
+        keys.rectTransform.sizeDelta = new Vector2(680f, 24f);
+
+        var howToButton = CreatePanelButton(parent, "WelcomeHowToButton", "How to Play", new Vector2(-220f, -494f), new Vector2(180f, 48f));
+        howToButton.onClick.AddListener(() => OpenAboutFromWelcome(highscores: false));
+        SetButtonFontSize(howToButton, 20);
+
+        var highscoresButton = CreatePanelButton(parent, "WelcomeHighscoresButton", "Highscores", new Vector2(-30f, -494f), new Vector2(170f, 48f));
+        highscoresButton.onClick.AddListener(() => OpenAboutFromWelcome(highscores: true));
+        SetButtonFontSize(highscoresButton, 20);
+
+        var startButton = CreatePanelButton(parent, "WelcomeStartButton", "START", new Vector2(190f, -494f), new Vector2(220f, 48f));
+        startButton.onClick.AddListener(ConfirmReadyToPlay);
+        startButton.GetComponent<Image>().color = new Color(0.55f, 0.95f, 0.6f, 1f);
+
+        readySkipToggle = CreatePanelToggle(parent, "WelcomeSkipToggle", "Skip this screen on Play Again", new Vector2(0f, -560f), new Vector2(320f, 28f));
+        readySkipToggle.SetIsOnWithoutNotify(PlayerPrefs.GetInt(SkipWelcomeOnPlayAgainPrefKey, 0) == 1);
         readySkipToggle.onValueChanged.AddListener(OnReadySkipNextTimeChanged);
 
-        readyModeButton = CreatePanelButton(readyToPlayPanel.transform, "ReadyModeButton", BuildModeButtonLabel(), new Vector2(0f, -276f), new Vector2(520f, 44f));
-        readyModeButton.onClick.AddListener(CycleModeOnReadyPanel);
-
-        readyDifficultyButton = CreatePanelButton(readyToPlayPanel.transform, "ReadyDifficultyButton", BuildDifficultyButtonLabel(), new Vector2(0f, -328f), new Vector2(520f, 44f));
-        readyDifficultyButton.onClick.AddListener(CycleDifficultyOnReadyPanel);
-
-        var okButton = CreatePanelButton(readyToPlayPanel.transform, "ReadyOkButton", "OK", new Vector2(0f, -436f), new Vector2(180f, 48f));
-        okButton.onClick.AddListener(ConfirmReadyToPlay);
+        RefreshWelcomeLabels();
+        SetWelcomeInfo($"Mode: {GameModes.ShortDescription(GameModes.Active)}");
     }
 
-    private static string BuildDifficultyButtonLabel()
+    private const float WelcomeControlX = 100f;
+    private const float WelcomeControlWidth = 400f;
+
+    private static void CreateWelcomeRowLabel(Transform parent, string text, float rowY)
+    {
+        var label = CreatePanelLabel(parent, $"WelcomeLabel_{text}", text, 20, new Vector2(-215f, rowY));
+        label.alignment = TextAnchor.MiddleLeft;
+        label.rectTransform.sizeDelta = new Vector2(220f, 40f);
+    }
+
+    private static Button CreateWelcomeRowButton(Transform parent, string name, float rowY, UnityEngine.Events.UnityAction onClick)
+    {
+        var button = CreatePanelButton(parent, name, string.Empty, new Vector2(WelcomeControlX, rowY), new Vector2(WelcomeControlWidth, 40f));
+        button.onClick.AddListener(onClick);
+        SetButtonFontSize(button, 19);
+        return button;
+    }
+
+    private static void SetButtonFontSize(Button button, int size)
+    {
+        var label = button != null ? button.GetComponentInChildren<Text>() : null;
+        if (label != null)
+        {
+            label.fontSize = size;
+        }
+    }
+
+    private void SetWelcomeInfo(string text)
+    {
+        if (welcomeInfoLabel != null)
+        {
+            welcomeInfoLabel.text = text;
+        }
+    }
+
+    private void RefreshWelcomeLabels()
     {
         var preset = Difficulty.ActivePreset;
-        return GameModes.HasTimeLimit
-            ? $"Difficulty: {preset.Label} ({Mathf.RoundToInt(preset.MissionDurationSeconds / 60f)} min)"
-            : $"Difficulty: {preset.Label}";
+        SetButtonLabel(readyModeButton, $"{GameModes.Label(GameModes.Active)}  ›");
+        SetButtonLabel(readyDifficultyButton, GameModes.HasTimeLimit
+            ? $"{preset.Label}  ({Mathf.RoundToInt(preset.MissionDurationSeconds / 60f)} min)  ›"
+            : $"{preset.Label}  ›");
+        SetButtonLabel(welcomeKitButton, $"{SquadLoadoutRules.Label(welcomeKit)}  ›");
+        SetButtonLabel(welcomeFocusButton, $"{currentPriority}  ›");
+        SetButtonLabel(welcomeMapButton, $"{GameMenuController.MapStyleLabel(GameMenuController.CurrentMapStyleIndex())}  ›");
     }
 
-    private static string BuildModeButtonLabel()
+    private static string FocusDescription(StrategicPriority priority) => priority switch
     {
-        var mode = GameModes.Active;
-        return $"Mode: {GameModes.Label(mode)} ({GameModes.ShortDescription(mode)})";
-    }
+        StrategicPriority.Coverage => "Coverage: watch more of the sky. More contacts, more chances to score.",
+        StrategicPriority.Research => "Research: fewer contacts, and Education grows much faster.",
+        _ => "Response: more time to answer, and outcomes raise less Permit Risk.",
+    };
 
-    /// <summary>Like difficulty: the mission has not started yet, so the change applies right away.</summary>
+    /// <summary>The mission has not started yet on this panel, so the change applies right away.</summary>
     private void CycleModeOnReadyPanel()
     {
         GameModes.SetSelected(GameModes.Next(GameModes.Active));
         GameModes.LockForMission();
         bestScore = PlayerPrefs.GetInt(BestScorePrefKey, 0);
-        SetButtonLabel(readyModeButton, BuildModeButtonLabel());
-        SetButtonLabel(readyDifficultyButton, BuildDifficultyButtonLabel());
+        RefreshWelcomeLabels();
         RefreshMissionHud();
+        SetWelcomeInfo($"Mode: {GameModes.ShortDescription(GameModes.Active)}");
     }
 
-    private static void SetButtonLabel(Button button, string text)
-    {
-        var label = button != null ? button.GetComponentInChildren<Text>() : null;
-        if (label != null)
-        {
-            label.text = text;
-        }
-    }
-
-    /// <summary>The mission has not started yet on the Get Ready panel, so the change applies right away.</summary>
     private void CycleDifficultyOnReadyPanel()
     {
         Difficulty.SetSelected(Difficulty.Next(Difficulty.Active));
         Difficulty.LockForMission();
         bestScore = PlayerPrefs.GetInt(BestScorePrefKey, 0);
+        RefreshWelcomeLabels();
+        RefreshMissionHud();
+        var preset = Difficulty.ActivePreset;
+        SetWelcomeInfo($"Difficulty: {preset.Label}. Score x{preset.ScoreMultiplier:0.##}.");
+    }
 
-        if (readyDifficultyButton != null)
+    private void CycleKitOnReadyPanel()
+    {
+        welcomeKit = SquadLoadoutRules.Next(welcomeKit);
+        PlayerPrefs.SetString(StartKitPrefKey, welcomeKit.ToString());
+        RefreshWelcomeLabels();
+        SetWelcomeInfo($"{SquadLoadoutRules.Label(welcomeKit)}: {SquadLoadoutRules.Summary(welcomeKit)}\nPress L in game to refit.");
+    }
+
+    private void CycleFocusOnReadyPanel()
+    {
+        // Values run 1..3 (Coverage, Research, Response), so wrap from 3 back to 1.
+        var next = (StrategicPriority)(((int)currentPriority % 3) + 1);
+        SetPriority(next, publishFeedback: false);
+        PlayerPrefs.SetInt(StartFocusPrefKey, (int)next);
+        RefreshWelcomeLabels();
+        SetWelcomeInfo($"{FocusDescription(next)}\nChange it any time with Q W E.");
+    }
+
+    private void CycleMapOnReadyPanel()
+    {
+        GameMenuController.CycleMapStyle();
+        RefreshWelcomeLabels();
+        SetWelcomeInfo("Map style: how the world map is drawn. No effect on play.");
+    }
+
+    // The About window and the game menu live on the menu canvas, which draws under this panel,
+    // so the panel steps aside while either is open and comes back when both close (see Update).
+    private void OpenAboutFromWelcome(bool highscores)
+    {
+        if (readyToPlayPanel != null && GameMenuController.OpenAboutWindow(highscores))
         {
-            var label = readyDifficultyButton.GetComponentInChildren<Text>();
-            if (label != null)
-            {
-                label.text = BuildDifficultyButtonLabel();
-            }
+            HideWelcomeForOverlay();
+        }
+    }
+
+    /// <summary>Hide the welcome panel while the menu or About window is shown over the map.</summary>
+    public void HideWelcomeForOverlay()
+    {
+        if (readyToPlayPanel == null)
+        {
+            return;
         }
 
-        RefreshMissionHud();
+        readyToPlayPanel.transform.parent.gameObject.SetActive(false);
+        welcomeHiddenForAbout = true;
+    }
+
+    private void RestoreWelcomeAfterAbout()
+    {
+        if (!welcomeHiddenForAbout || GameMenuController.IsAboutOpen || GameMenuController.IsMenuOpen)
+        {
+            return;
+        }
+
+        welcomeHiddenForAbout = false;
+        if (readyToPlayPanel != null)
+        {
+            readyToPlayPanel.transform.parent.gameObject.SetActive(true);
+        }
+    }
+
+    /// <summary>Kit and starting focus from the last welcome screen carry over to the next game.</summary>
+    private void ApplyRememberedStartChoices()
+    {
+        welcomeKit = SquadLoadout.Standard;
+        var storedKit = PlayerPrefs.GetString(StartKitPrefKey, string.Empty);
+        if (!string.IsNullOrEmpty(storedKit) && Enum.TryParse(storedKit, out SquadLoadout parsedKit))
+        {
+            welcomeKit = parsedKit;
+        }
+
+        var squad = GetComponent<SquadManager>();
+        if (squad != null)
+        {
+            squad.SetLoadoutBeforeMission(welcomeKit);
+        }
+
+        var focus = PlayerPrefs.GetInt(StartFocusPrefKey, (int)StrategicPriority.Coverage);
+        if (focus < (int)StrategicPriority.Coverage || focus > (int)StrategicPriority.Response)
+        {
+            focus = (int)StrategicPriority.Coverage;
+        }
+
+        SetPriority((StrategicPriority)focus, publishFeedback: false);
     }
 
     private void OnReadySkipNextTimeChanged(bool isOn)
     {
-        skipReadyNextTime = isOn;
+        PlayerPrefs.SetInt(SkipWelcomeOnPlayAgainPrefKey, isOn ? 1 : 0);
+        PlayerPrefs.Save();
     }
 
     private void ConfirmReadyToPlay()
     {
         if (readyToPlayPanel != null)
         {
+            if (welcomeNameInput != null)
+            {
+                // An empty name falls back to the default, so Start is never blocked.
+                SetCommanderName(welcomeNameInput.text, persist: true);
+            }
+
+            var squad = GetComponent<SquadManager>();
+            if (squad != null)
+            {
+                squad.SetLoadoutBeforeMission(welcomeKit);
+            }
+
             if (readySkipToggle != null)
             {
                 readySkipToggle.onValueChanged.RemoveListener(OnReadySkipNextTimeChanged);
@@ -523,17 +701,9 @@ public class GameManager : MonoBehaviour
             readyToPlayPanel = null;
         }
 
-        if (skipReadyNextTime)
-        {
-            PlayerPrefs.SetInt(SkipReadyScreenOncePrefKey, 1);
-        }
-        else
-        {
-            PlayerPrefs.DeleteKey(SkipReadyScreenOncePrefKey);
-        }
-
+        IsWelcomeOpen = false;
+        welcomeHiddenForAbout = false;
         PlayerPrefs.Save();
-        skipReadyNextTime = false;
 
         GameMenuController.SetPaused(false);
 
@@ -545,6 +715,15 @@ public class GameManager : MonoBehaviour
         SetBoxCanvasVisible(true);
 
         BeginOperationalStart();
+    }
+
+    private static void SetButtonLabel(Button button, string text)
+    {
+        var label = button != null ? button.GetComponentInChildren<Text>() : null;
+        if (label != null)
+        {
+            label.text = text;
+        }
     }
 
     private static void SetBoxCanvasVisible(bool visible)
@@ -642,11 +821,11 @@ public class GameManager : MonoBehaviour
         Destroy(go);
     }
 
-    private void TryApplyAutoLoadedPriority()
+    private bool TryApplyAutoLoadedPriority()
     {
         if (!PlayerPrefs.HasKey(AutoLoadPriorityPrefKey))
         {
-            return;
+            return false;
         }
 
         var raw = PlayerPrefs.GetInt(AutoLoadPriorityPrefKey, (int)StrategicPriority.Coverage);
@@ -659,9 +838,11 @@ public class GameManager : MonoBehaviour
         }
 
         SetPriority((StrategicPriority)raw, publishFeedback: true);
+        return true;
     }
 
-    private void TryApplyAutoLoadedState()
+    /// <summary>Applies a game loaded from the save slot. Returns true if there was one.</summary>
+    private bool TryApplyAutoLoadedState()
     {
         if (PlayerPrefs.HasKey(AutoLoadStatePrefKey))
         {
@@ -673,12 +854,12 @@ public class GameManager : MonoBehaviour
             {
                 var state = JsonUtility.FromJson<AutoLoadState>(json);
                 ApplyAutoLoadState(state);
-                return;
+                return true;
             }
         }
 
         // Backward compatibility for older save data that only carried priority.
-        TryApplyAutoLoadedPriority();
+        return TryApplyAutoLoadedPriority();
     }
 
     private void ApplyAutoLoadState(AutoLoadState state)
@@ -905,10 +1086,11 @@ public class GameManager : MonoBehaviour
 
     private void Update()
     {
+        RestoreWelcomeAfterAbout();
         TickMissionState();
         RefreshMissionHud();
 
-        if (missionEnded)
+        if (missionEnded || IsWelcomeOpen)
         {
             return;
         }
